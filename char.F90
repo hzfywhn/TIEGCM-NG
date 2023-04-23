@@ -1,0 +1,38 @@
+module char_module
+
+  implicit none
+
+  contains
+!-----------------------------------------------------------------------
+  function ismember(instance,group) result(flag)
+
+    character(len=*),intent(in) :: instance
+    character(len=*),dimension(:),intent(in) :: group
+    logical :: flag
+
+    integer :: i
+
+    flag = .false.
+    do i = 1,size(group)
+      if (trim(instance) == trim(group(i))) then
+        flag = .true.
+        exit
+      endif
+    enddo
+
+  end function ismember
+!-----------------------------------------------------------------------
+  function find_index(instance,group) result(idx)
+
+    character(len=*),intent(in) :: instance
+    character(len=*),dimension(:),intent(in) :: group
+    integer :: idx
+
+    do idx = 1,size(group)
+      if (trim(instance) == trim(group(idx))) return
+    enddo
+    idx = 0
+
+  end function find_index
+!-----------------------------------------------------------------------
+end module char_module
