@@ -6,6 +6,7 @@ module output_ng_module
   use fields_module,only: nf4d,shortname_len
   implicit none
 
+! this number can be adjusted if addfld is called many times
   integer,parameter :: max_addfld = 30
 
   integer :: n_varout
@@ -30,7 +31,7 @@ module output_ng_module
     use netcdf,only: nf90_netcdf4,nf90_unlimited,nf90_double,nf90_float, &
       nf90_create,nf90_def_dim,nf90_def_var,nf90_enddef,nf90_put_var,nf90_put_att
 
-    integer :: if4d,n,imon,day,i_ng,stat,dim_ilev,dim_v,varid_lev,varid_ilev,varid_lon,varid_lat
+    integer :: if4d,n,imon,iday,i_ng,stat,dim_ilev,dim_v,varid_lev,varid_ilev,varid_lon,varid_lat
     integer,dimension(12) :: month
     character(len=80) :: units
 
@@ -49,14 +50,16 @@ module output_ng_module
     month = (/31,28,31,30,31,30,31,31,30,31,30,31/)
     if ((mod(start_year,4)==0 .and. mod(start_year,100)/=0) .or. mod(start_year,400)==0) month(2) = 29
 
-    imon = 1
-    day = start_day
-    do while (day > month(imon))
-      day = day-month(imon)
-      imon = imon+1
+    iday = start_day
+    do imon = 1,12
+      if (iday > month(imon)) then
+        iday = iday-month(imon)
+      else
+        exit
+      endif
     enddo
 
-    write(units,"('seconds since ',i4,'-',i2.2,'-',i2.2,' 00:00:00')") start_year,imon,day
+    write(units,"('seconds since ',i4,'-',i2.2,'-',i2.2,' 00:00:00')") start_year,imon,iday
 
     irec = 1
     nvar2d = 0
@@ -66,6 +69,7 @@ module output_ng_module
     var2d_name = ''
     var3d_name = ''
 
+! define coordinates and namelist outputs at each level
     do i_ng = 1,n_ng
       stat = nf90_create(trim(fileout_ng(i_ng)),nf90_netcdf4,ncid(i_ng))
 
@@ -182,6 +186,7 @@ module output_ng_module
       stat = nf90_put_var(ncid(i_ng),varid_time(i_ng),modeltime(i_ng),start=(/irec(i_ng)/))
       irec(i_ng) = irec(i_ng)+1
 
+! flush output buffer in case the program quited abnormally
       stat = nf90_sync(ncid(i_ng))
     endif
 
@@ -206,6 +211,7 @@ module output_ng_module
 
     call gather2root_var2d(var,full,i_ng)
 
+! find the index of the field or define it in the output file
     if (mytid == 0) then
       if (ismember(varname,var2d_name(i_ng,1:nvar2d(i_ng)))) then
         if2d = find_index(varname,var2d_name(i_ng,1:nvar2d(i_ng)))

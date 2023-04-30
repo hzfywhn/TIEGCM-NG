@@ -66,9 +66,15 @@
      |        zpmag(nmlevp1),   ! magnetic midpoint levels
      |        zpimag(nimlevp1)  ! magnetic interface levels
 !
-      real,dimension(nlonp4) :: glon0
+      real,dimension(nlonp4) :: glon0 ! include ghost points (1->nlonp4)
+!
+! maximum nesting levels allowed, can be adjusted if needed
       integer,parameter :: mx_ng = 5
+!
+! actual nesting levels for this model run
       integer :: n_ng
+!
+! grid setup in each nesting level
       integer,dimension(mx_ng) :: nlevp1_ng,nlat_ng,nlon_ng
       real,dimension(:,:),allocatable ::
      |  zpmid_ng,zpint_ng,glat_ng,glon_ng

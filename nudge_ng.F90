@@ -1,22 +1,27 @@
 module nudge_ng_module
+! force the model fields near lower boundary with external fields
 
   use params_module, only: mx_ng
   implicit none
 
+! if external fields contain lb, then the model lower boundary will use external fields
   character(len=*), dimension(*), parameter :: lb = (/'TN', 'UN', 'VN', 'Z '/)
   integer, parameter :: nlb = size(lb)
 
-  logical :: wrap
+  logical :: wrap ! whether the external field has a full longitude cycle
   integer :: nlon, nlat, nlev, ntime, nfile, nf4d, ifile, itime, ncid
   real :: y0, y1, z0, z1
   integer, dimension(nlb) :: lb_idx
   logical, dimension(:), allocatable :: no_fill
   integer, dimension(:), allocatable :: time, nt, t0, t1, f4d_idx, varid
   real, dimension(:), allocatable :: lon, fill_value
+! note that lb_idx and f4d_idx are referenced upon different fields
+! lb_idx is the index of lb fields in the external fields
+! f4d_idx is the index of external fields in the model fields
 
   type fields
     integer :: maxlev, latbeg, latend, lonbeg, lonend, offbeg, offend, lonbeg1, lonend1
-    real, dimension(:,:), allocatable :: vert_weight, hori_weight
+    real, dimension(:,:), allocatable :: vert_weight, hori_weight ! vertical and horizontal relaxation factors
     real, dimension(:,:,:,:), allocatable :: lbc
     real, dimension(:,:,:,:,:), allocatable :: f4d
   end type fields
@@ -26,6 +31,7 @@ module nudge_ng_module
   contains
 !-----------------------------------------------------------------------
   subroutine check
+! check the compliance of the external field
 
     use params_module, only: mxhvols, zibot
     use input_module, only: nudge_ncpre, nudge_ncfile, nudge_ncpost, nudge_flds, nudge_sponge, nudge_tshift
@@ -52,6 +58,8 @@ module nudge_ng_module
     stat = nf90_inq_varid(ncid, 'lon', varid_lon)
     stat = nf90_get_var(ncid, varid_lon, lon)
 
+! if the external field covers the full longitude cycle,
+! then model fields at lon=1,2 and lon=nlonp4-1,nlonp4 will be obtained from the external field
     dlon = (lon(nlon)-lon(1)) / (nlon-1)
     if (abs(lon(1)+360-lon(nlon)-dlon) < eps*dlon) then
       wrap = .true.
@@ -99,6 +107,7 @@ module nudge_ng_module
     if (nudge_sponge(1)*2>=max(lon(nlon)-lon(1), y1-y0) .or. nudge_sponge(2)>z1-z0) &
       call shutdown('nudge_sponge cannot exceed nudge_ncfile dimension range')
 
+! if there are multiple external data files, the model will read the correct data file based on time
     nfile = count(len_trim(nudge_ncfile) > 0)
     allocate(nt(nfile))
     do ifile = 1, nfile
@@ -135,6 +144,7 @@ module nudge_ng_module
   end subroutine check
 !-----------------------------------------------------------------------
   subroutine init
+! synchronize external field paramters among processes and init subdomain grids
 
     use params_module, only: n_ng, nlevp1, nlevp1_ng, zmbot, zibot, &
       zpmid, zpint, glon0, glat, zpmid_ng, zpint_ng, glon_ng, glat_ng, ispval
@@ -233,6 +243,7 @@ module nudge_ng_module
       z1 = buffer_r(nlon+nf4d+4)
     endif
 
+! a sponge layer is imposed to allow smooth transition
     lb = lon(1) + nudge_sponge(1)
     rb = lon(nlon) - nudge_sponge(1)
     tb = y0 + nudge_sponge(1)
@@ -268,6 +279,7 @@ module nudge_ng_module
         model_lon(i0: i1) = glon_ng(i_ng, i0: i1)
       endif
 
+! smooth vertical transition from external fields to model fields, exponential decay
       do k = 1, nk
         if (zpm(k)>zmbot+nudge_sponge(2) .or. zpi(k)>zibot+nudge_sponge(2)) exit
       enddo
@@ -293,6 +305,8 @@ module nudge_ng_module
       flds(i_ng)%latend = lat
 
       if (wrap) then
+! if the external field covers the full longitude cycle, then the model subdomain is fully embedded
+! move the edge of the external domain to cover the model subdomain
         slon = model_lon((i0 + i1) / 2) - 180
         do shift = -1, 1
           if (lon(1)+shift*360<=slon .and. slon<=lon(nlon)+shift*360) exit
@@ -301,8 +315,13 @@ module nudge_ng_module
         flds(i_ng)%lonbeg = idx(1)
         flds(i_ng)%offbeg = shift
       else
+
+! find the suitable 360 degree wrap of the external domain to intersect the model subdomain
+! the following part finds the left edge of the model subdomain
         intersect = .false.
         left: do i = i0, i1
+! the shift loop can be omitted if the external domain is also from -180 to 180 (shift=0)
+! if the external domain is not from -180 to 180, the 360 degree wrap will be only one of -1,0,1
           do shift = -1, 1
             if ((lon(1)+shift*360<=model_lon(i) .and. model_lon(i)<=lon(nlon)+shift*360)) then
               intersect = .true.
@@ -315,6 +334,7 @@ module nudge_ng_module
           flds(i_ng)%offbeg = shift
         endif
 
+! similar for the right edge of the mode subdomain
         intersect = .false.
         right: do i = i1, i0, -1
           do shift = -1, 1
@@ -328,6 +348,19 @@ module nudge_ng_module
           flds(i_ng)%lonend = i
           flds(i_ng)%offend = shift
         endif
+
+! after the 360 degree wrap of the external domain, there will be three possibilities, discussed as follows:
+! 1. lonbeg<lonend && offbeg==offend, left edge and right edge doesn't cross the 180 degree boundary,
+! the overlapping region is (model_lon(lonbeg), model_lon(lonend)) and (lon(1)+offbeg*360, lon(nlon)+offend*360)
+! 2. lonbeg<lonend && offbeg+1==offend, left edge doesn't cross the 180 degree boundary but right edge does,
+! the overlapping region is splitted into two:
+!   - 1. (model_lon(lonbeg), model_lon(lonend1)) vs (lon(1)+offbeg*360, lon(nlon)+offbeg*360)
+!   - 2. (model_lon(lonbeg1), model_lon(lonend)) vs (lon(1)+offend*360, lon(nlon)+offend*360)
+! the additional parameters lonbeg1,lonend1 of this situation are calculated below
+! 3. lonbeg>lonend && offbeg==offend+1, left edge crosses the 180 degree boundary but right edge doesn't,
+! left edge and right edge are swapped, the overlapping region also consists of two parts
+!   - 1. (model_lon(lonbeg), model_lon(i1)) vs (lon(1)+offbeg*360, lon(nlon)+offbeg*360)
+!   - 2. (model_lon(i0), model_lon(lonend)) vs (lon(1)+offend*360, lon(nlon)+offend*360)
 
         if (flds(i_ng)%lonbeg<flds(i_ng)%lonend .and. flds(i_ng)%offbeg+1==flds(i_ng)%offend) then
           do i = flds(i_ng)%lonbeg, flds(i_ng)%lonend
@@ -369,6 +402,8 @@ module nudge_ng_module
           enddo
         endif
 
+! if the point is inside the inner square, the distance is zero
+! if the point is outside the inner square, the distance is the great-circle distance to the nearest point
         do lat = flds(i_ng)%latbeg, flds(i_ng)%latend
           latpart1 = sin((yc(lat) - model_lat(lat)) * dtr / 2)**2
           latpart2 = 1 - latpart1 - sin((yc(lat) + model_lat(lat)) * dtr / 2)**2
@@ -378,6 +413,7 @@ module nudge_ng_module
           enddo
         enddo
 
+! the relaxation function is an exponential function of the great-circle distance
         flds(i_ng)%hori_weight = exp(-(dist(i0: i1, flds(i_ng)%latbeg: flds(i_ng)%latend) / (nudge_delta(1)*dtr))**nudge_power(1))
       endif
     enddo
@@ -400,6 +436,7 @@ module nudge_ng_module
   end subroutine init
 !-----------------------------------------------------------------------
   subroutine update(modelsec)
+! move the cursor itime to include modelsec inside the interval [time(itime), time(itime+1)]
 
     use params_module, only: n_ng
 
@@ -416,6 +453,7 @@ module nudge_ng_module
 
     if (increment >= 1) then
       if (increment == 1) then
+! if itime is moved forward by 1, the previous time is then filled the the current time
         do i_ng = 0, n_ng
           if (flds(i_ng)%latbeg < flds(i_ng)%latend) then
             flds(i_ng)%lbc(:, :, 1, :) = flds(i_ng)%lbc(:, :, 2, :)
@@ -423,6 +461,7 @@ module nudge_ng_module
           endif
         enddo
       else
+! only at the first step will both steps be re-calculated
         call read_data(itime, 1)
       endif
       call read_data(itime+1, 2)
@@ -455,6 +494,7 @@ module nudge_ng_module
     real, dimension(1, min(lon0, minval(ng_flds%lond0)): max(lon1, maxval(ng_flds%lond1)), &
       minval(flds%latbeg): maxval(flds%latend)) :: lbc0
 
+! open a new file to read if the current modelsec is over the last time index of the file
     if (itime > t1(ifile)) then
       stat = nf90_close(ncid)
 
@@ -471,6 +511,8 @@ module nudge_ng_module
     enddo
 
     zlbc(1) = zibot
+
+! interpolate based on the subdomain intersection discussed in init
 
     do i_ng = 0, n_ng
       latbeg = flds(i_ng)%latbeg

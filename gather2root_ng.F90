@@ -1,5 +1,5 @@
 module gather2root_ng_module
-! wrapper of mpi_gather to collect nested grid fields to root process (mytid==0)
+! wrapper of mpi_gather to collect nested grid fields to root process (mytid==0), mainly for output purposes
 
   implicit none
 

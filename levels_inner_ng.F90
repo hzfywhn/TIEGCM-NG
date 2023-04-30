@@ -128,7 +128,7 @@ module levels_inner_ng_module
 
   end subroutine init_mapping
 !-----------------------------------------------------------------------
-  subroutine map_in(to,i_ng)
+  subroutine map_in(i_ng)
 
     use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,zpint_ng,glon_ng,glat_ng,zibot,zitop
     use input_module,only: nstep_ng
@@ -138,7 +138,7 @@ module levels_inner_ng_module
     use mpi_f08,only: mpi_request,mpi_isend,mpi_irecv,mpi_waitall, &
       mpi_real8,mpi_comm_world,mpi_statuses_ignore
 
-    integer,intent(in) :: to,i_ng
+    integer,intent(in) :: i_ng
 
     integer :: lon0,lon1,lat0,lat1,cnt3d,cnt2d,itask,ifld
     real,dimension(nlevp1_ng(i_ng-1),maxlon(i_ng-1),maxlat(i_ng-1),nf3din) :: sendbuf3d
@@ -192,7 +192,8 @@ module levels_inner_ng_module
     enddo
 
     do ifld = 1,nf3din
-      flds(i_ng)%f3d_save(:,:,:,to,ifld) = interp3d(zpint_ng(i_ng,1:nlevp1_ng(i_ng)), &
+      flds(i_ng)%f3d_save(:,:,:,nstep_ng(i_ng),ifld) = interp3d( &
+        zpint_ng(i_ng,1:nlevp1_ng(i_ng)), &
         glon_ng(i_ng,flds(i_ng)%lond0:flds(i_ng)%lond1), &
         glat_ng(i_ng,flds(i_ng)%latd0:flds(i_ng)%latd1), &
         zibot,zitop, &
@@ -202,7 +203,7 @@ module levels_inner_ng_module
     enddo
 
     do ifld = 1,nf2din
-      flds(i_ng)%f2d_save(:,:,to,ifld) = interp2d( &
+      flds(i_ng)%f2d_save(:,:,nstep_ng(i_ng),ifld) = interp2d( &
         glon_ng(i_ng,flds(i_ng)%lond0:flds(i_ng)%lond1), &
         glat_ng(i_ng,flds(i_ng)%latd0:flds(i_ng)%latd1), &
         glon_ng(i_ng-1,-1),glon_ng(i_ng-1,nlon_ng(i_ng-1)+2), &
@@ -293,22 +294,21 @@ module levels_inner_ng_module
 
   end subroutine map_out
 !-----------------------------------------------------------------------
-  subroutine set_bndry(initialized,i_ng)
+  subroutine set_bndry(i_ng)
 
     use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,zpint_ng,glon_ng,glat_ng,zibot,zitop
     use input_module,only: nstep_ng
     use fields_module,only: f4d,nf4d
-    use fields_ng_module,only: flds,maxlon,maxlat,domain,itp,itc,nbnd,bndry,zlog
+    use fields_ng_module,only: flds,maxlon,maxlat,domain,itc,nbnd,bndry,zlog
     use char_module,only: ismember
     use interp_module,only: interp3d
     use mpi_module,only: ntask
     use mpi_f08,only: mpi_request,mpi_isend,mpi_irecv,mpi_waitall, &
       mpi_real8,mpi_comm_world,mpi_statuses_ignore
 
-    logical,intent(in) :: initialized
     integer,intent(in) :: i_ng
 
-    integer :: from,to,lon0,lon1,lat0,lat1,n,if4d,cnt,itask,i,lat,ibnd
+    integer :: lon0,lon1,lat0,lat1,n,if4d,cnt,itask,i,lat,ibnd
     real,dimension(1) :: bnd
     real,dimension(nlevp1_ng(i_ng-1),maxlon(i_ng-1),maxlat(i_ng-1),nbnd) :: sendbuf
     real,dimension(nlevp1_ng(i_ng-1),maxlon(i_ng-1),maxlat(i_ng-1),nbnd,0:ntask-1) :: recvbuf
@@ -318,14 +318,6 @@ module levels_inner_ng_module
     type(mpi_request),dimension(0:ntask*2-1) :: request
     external :: bndry_index_ng
 
-    if (initialized) then
-      from = itc(i_ng-1)
-      to = nstep_ng(i_ng)
-    else
-      from = itp(i_ng-1)
-      to = 0
-    endif
-
     call bndry_index_ng((/flds(i_ng-1)%lon0,flds(i_ng-1)%lon1,flds(i_ng-1)%lat0,flds(i_ng-1)%lat1/), &
       nlon_ng(i_ng-1),nlat_ng(i_ng-1),lon0,lon1,lat0,lat1)
 
@@ -333,7 +325,7 @@ module levels_inner_ng_module
     n = 1
     do if4d = 1,nf4d
       if (ismember(f4d(if4d)%short_name,bndry)) then
-        sendbuf(:,1:lon1-lon0+1,1:lat1-lat0+1,n) = flds(i_ng-1)%f4d(if4d)%data(:,lon0:lon1,lat0:lat1,from)
+        sendbuf(:,1:lon1-lon0+1,1:lat1-lat0+1,n) = flds(i_ng-1)%f4d(if4d)%data(:,lon0:lon1,lat0:lat1,itc(i_ng-1))
         n = n+1
       endif
     enddo
@@ -372,7 +364,7 @@ module levels_inner_ng_module
             glon_ng(i_ng-1,-1),glon_ng(i_ng-1,nlon_ng(i_ng-1)+2), &
             glat_ng(i_ng-1,-1),glat_ng(i_ng-1,nlat_ng(i_ng-1)+2), &
             full(:,:,:,ibnd),ismember(bndry(ibnd),zlog))
-          flds(i_ng)%lon_b(:,i,:,to,ibnd) = bndx(:,1,:)
+          flds(i_ng)%lon_b(:,i,:,nstep_ng(i_ng),ibnd) = bndx(:,1,:)
         enddo
       endif
     enddo
@@ -409,7 +401,7 @@ module levels_inner_ng_module
             glon_ng(i_ng-1,-1),glon_ng(i_ng-1,nlon_ng(i_ng-1)+2), &
             glat_ng(i_ng-1,-1),glat_ng(i_ng-1,nlat_ng(i_ng-1)+2), &
             full(:,:,:,ibnd),ismember(bndry(ibnd),zlog))
-          flds(i_ng)%lat_b(:,:,lat,to,ibnd) = bndy(:,:,1)
+          flds(i_ng)%lat_b(:,:,lat,nstep_ng(i_ng),ibnd) = bndy(:,:,1)
         enddo
       endif
     enddo

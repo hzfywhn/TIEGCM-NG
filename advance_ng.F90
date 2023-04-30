@@ -1,4 +1,7 @@
 recursive subroutine advance_ng(i_ng)
+! instead of linear procedure in advance, advance_ng has a stack-like working procedure
+! enter low levels first before high levels, but finish high levels before low levels
+! a recursive subroutine is suitable for such stack-like procedures
 
   use params_module,only: n_ng
   use input_module,only: nstep_ng,nstep_sub,nudge_lbc,nudge_f4d,nudge_pert,nudge_level,nudge_alpha
@@ -28,11 +31,11 @@ recursive subroutine advance_ng(i_ng)
 
 ! set up essential 2d/3d fields and boundaries
   if (i_ng == 1) then
-    call map_in_1(nstep_ng(1))
-    call set_bndry_1(.true.)
+    call map_in_1
+    call set_bndry_1
   else
-    call map_in(nstep_ng(i_ng),i_ng)
-    call set_bndry(.true.,i_ng)
+    call map_in(i_ng)
+    call set_bndry(i_ng)
   endif
 
 ! index 0 is either from initialization or the previous iteration
@@ -51,6 +54,9 @@ recursive subroutine advance_ng(i_ng)
 
   do istep = 1,nstep_ng(i_ng)
     modeltime(i_ng) = modeltime(i_ng)+step(i_ng)
+
+! essential 2d/3d fields (lower boundary conditions and electric fields) are stored in f2d_save/f3d_save
+! before each sub-cycle, they will replace the outdated f2din/f3din fields
     do ifld = 1,nf3din
       flds(i_ng)%f3din(ifld)%data = flds(i_ng)%f3d_save(:,:,:,istep,ifld)
     enddo
@@ -121,6 +127,7 @@ recursive subroutine advance_ng(i_ng)
       endif
     endif
 
+! TLBC,ULBC,VLBC,ZLBC are mandatory outputs (2d)
     call addfld(flds(i_ng)%t_lbc,'TLBC',i_ng)
     call addfld(flds(i_ng)%u_lbc,'ULBC',i_ng)
     call addfld(flds(i_ng)%v_lbc,'VLBC',i_ng)
@@ -227,7 +234,7 @@ recursive subroutine advance_ng(i_ng)
     if (debug) call output(i_ng)
   enddo
 
-! save the last step for the next iteration
+! save the last step for interpolation in the next iteration
   flds(i_ng)%f3d_save(:,:,:,0,:) = flds(i_ng)%f3d_save(:,:,:,nstep_ng(i_ng),:)
   flds(i_ng)%f2d_save(:,:,0,:) = flds(i_ng)%f2d_save(:,:,nstep_ng(i_ng),:)
   if (flds(i_ng)%is_bndry(1) .or. flds(i_ng)%is_bndry(2)) &

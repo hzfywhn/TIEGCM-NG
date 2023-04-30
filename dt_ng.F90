@@ -171,6 +171,7 @@ subroutine dt_ng(tn_upd,tn_nm_upd,tlbc,tlbc_nm,istep,i_ng)
 
   tn_upd(nk,:,:) = tn_upd(nk-1,:,:)**2/tn_upd(nk-2,:,:)
 
+! a hook to apply Dirichlet lateral boundary conditions, also see duv,comp,oplus,swdot
   idx_tn = find_index('TN',bndry)
   if (is_bndry(1)) tn_upd(:,-1,:) = flds(i_ng)%lon_b(:,1,:,istep,idx_tn)
   if (is_bndry(2)) tn_upd(:,nlon_ng(i_ng)+2,:) = flds(i_ng)%lon_b(:,2,:,istep,idx_tn)

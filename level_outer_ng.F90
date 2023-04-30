@@ -165,11 +165,12 @@ module level_outer_ng_module
 
   end subroutine init_mapping
 !-----------------------------------------------------------------------
-  subroutine map_in(to)
+  subroutine map_in
 ! essential 2d/3d fields are mapped at every time
 
     use params_module,only: nlevp1,nlon,nlonp1,nlonp2,nlonp4,nlat,nlevp1_ng, &
       zibot,zitop,glon0,glat,zpint_ng,glon_ng,glat_ng
+    use input_module,only: nstep_ng
     use pdynamo_module,only: ex,ey,ez
     use lbc,only: t_lbc,u_lbc,v_lbc,z_lbc,flx_he
     use amie_module,only: ekvg,efxg
@@ -178,8 +179,6 @@ module level_outer_ng_module
     use mpi_module,only: mxlon,mxlat,ntask,tasks,lon0,lon1,lat0,lat1
     use mpi_f08,only: mpi_request,mpi_isend,mpi_irecv,mpi_waitall, &
       mpi_real8,mpi_comm_world,mpi_statuses_ignore
-
-    integer,intent(in) :: to
 
     integer :: nx,ny,cnt3d,cnt2d,itask,i0,i1,j0,j1,sidx,ifld
     real :: x0,x1,mid_lon
@@ -279,14 +278,14 @@ module level_outer_ng_module
 
 ! interpolate to nested grid subdomain
     do ifld = 1,nf3din
-      flds(1)%f3d_save(:,:,:,to,ifld) = interp3d(zpint_ng(1,1:nlevp1_ng(1)), &
+      flds(1)%f3d_save(:,:,:,nstep_ng(1),ifld) = interp3d(zpint_ng(1,1:nlevp1_ng(1)), &
         glon_ng(1,flds(1)%lond0:flds(1)%lond1), &
         glat_ng(1,flds(1)%latd0:flds(1)%latd1), &
         zibot,zitop,x0,x1,glat(1),glat(nlat),full3d(:,1:nx,:,ifld))
     enddo
 
     do ifld = 1,nf2din
-      flds(1)%f2d_save(:,:,to,ifld) = interp2d( &
+      flds(1)%f2d_save(:,:,nstep_ng(1),ifld) = interp2d( &
         glon_ng(1,flds(1)%lond0:flds(1)%lond1), &
         glat_ng(1,flds(1)%latd0:flds(1)%latd1), &
         x0,x1,glat(1),glat(nlat),full2d(1:nx,:,ifld))
@@ -442,12 +441,12 @@ module level_outer_ng_module
 
   end subroutine map_out
 !-----------------------------------------------------------------------
-  subroutine set_bndry(initialized)
+  subroutine set_bndry
 
     use params_module,only: nlevp1,nlonp1,nlonp2,nlonp4,nlat,nlevp1_ng,nlon_ng,nlat_ng, &
       zibot,zitop,glon0,glat,zpint_ng,glon_ng,glat_ng
     use input_module,only: nstep_ng
-    use fields_module,only: f4d,nf4d,itp,itc
+    use fields_module,only: f4d,nf4d,itc
     use fields_ng_module,only: flds,nbnd,bndry,ubfill,zlog
     use interp_module,only: interp3d
     use char_module,only: ismember
@@ -455,9 +454,7 @@ module level_outer_ng_module
     use mpi_f08,only: mpi_request,mpi_isend,mpi_irecv,mpi_waitall, &
       mpi_real8,mpi_comm_world,mpi_statuses_ignore
 
-    logical,intent(in) :: initialized
-
-    integer :: from,to,n,if4d,cnt,itask,i0,i1,j0,j1,i,lat,ibnd,nx,sidx
+    integer :: n,if4d,cnt,itask,i0,i1,j0,j1,i,lat,ibnd,nx,sidx
     real :: x0,x1,mid_lon
     integer,dimension(1) :: idx
     real,dimension(1) :: bnd
@@ -468,20 +465,12 @@ module level_outer_ng_module
     real,dimension(nlevp1_ng(1),flds(1)%lond0:flds(1)%lond1,1) :: bndy
     type(mpi_request),dimension(0:ntask*2-1) :: request
 
-    if (initialized) then
-      from = itc
-      to = nstep_ng(1)
-    else
-      from = itp
-      to = 0
-    endif
-
     sendbuf = 0.
     n = 1
     do if4d = 1,nf4d
 ! only necessary fields are transferred
       if (ismember(f4d(if4d)%short_name,bndry)) then
-        sendbuf(:,1:lon1-lon0+1,1:lat1-lat0+1,n) = f4d(if4d)%data(:,lon0:lon1,lat0:lat1,from)
+        sendbuf(:,1:lon1-lon0+1,1:lat1-lat0+1,n) = f4d(if4d)%data(:,lon0:lon1,lat0:lat1,itc)
         if (ismember(f4d(if4d)%short_name,ubfill)) then
           if (ismember(f4d(if4d)%short_name,zlog)) then
             sendbuf(nlevp1,:,:,n) = sendbuf(nlevp1-1,:,:,n)**2/sendbuf(nlevp1-2,:,:,n)
@@ -538,7 +527,7 @@ module level_outer_ng_module
             bnd,glat_ng(1,flds(1)%latd0:flds(1)%latd1), &
             zibot,zitop,glon0(1),glon0(nlonp4),glat(1),glat(nlat), &
             full(:,:,:,ibnd),ismember(bndry(ibnd),zlog))
-          flds(1)%lon_b(:,i,:,to,ibnd) = bndx(:,1,:)
+          flds(1)%lon_b(:,i,:,nstep_ng(1),ibnd) = bndx(:,1,:)
         enddo
       endif
     enddo
@@ -565,7 +554,7 @@ module level_outer_ng_module
           j1 = tasks(itask)%lat1
           full(:,i0:i1,j0:j1,:) = recvbuf(:,1:i1-i0+1,1:j1-j0+1,:,itask)
         enddo
-    
+
         if (lat == 3) then
           bnd(1) = glat_ng(1,-1)
         else
@@ -600,7 +589,7 @@ module level_outer_ng_module
             glon_ng(1,flds(1)%lond0:flds(1)%lond1),bnd, &
             zibot,zitop,x0,x1,glat(1),glat(nlat), &
             full(:,1:nx,:,ibnd),ismember(bndry(ibnd),zlog))
-          flds(1)%lat_b(:,:,lat,to,ibnd) = bndy(:,:,1)
+          flds(1)%lat_b(:,:,lat,nstep_ng(1),ibnd) = bndy(:,:,1)
         enddo
       endif
     enddo

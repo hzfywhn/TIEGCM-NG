@@ -1,4 +1,7 @@
 module fields_ng_module
+! 4d fields are the same as in the global domain (fields_module)
+! 3d fields include some additional fields defined in each module
+! 2d fields include 3 additional fields: Helium flux at the upper boundary (flx_he) and AMIE aurora (ekvg/efxg)
 
   use params_module,only: mx_ng
   use fields_module,only: nf4d,fields_4d,fields_3d,fields_2d
@@ -7,8 +10,9 @@ module fields_ng_module
   integer,parameter :: nf3din = 3, nf2din = 7
 
   type fields
+! subdomain
     integer :: lon0,lon1,lat0,lat1,lond0,lond1,latd0,latd1
-    logical,dimension(4) :: is_bndry
+    logical,dimension(4) :: is_bndry ! (left,right,top,bottom)
 
 ! const fields per process
     real,dimension(:),allocatable :: racs,cs,tanphi,cor
@@ -17,7 +21,6 @@ module fields_ng_module
     real,dimension(:,:,:,:),allocatable :: rjac
 
 ! essential 2d/3d/4d fields, use pointer to associate with f2d/f3d/f4d
-    real,dimension(:,:),allocatable :: tlbc,ulbc,vlbc,tlbc_nm,ulbc_nm,vlbc_nm
     real,dimension(:,:),pointer :: t_lbc,u_lbc,v_lbc,z_lbc,flx_he,ekvg,efxg
     real,dimension(:,:,:),pointer :: ex,ey,ez
     real,dimension(:,:,:,:),pointer :: &
@@ -28,16 +31,20 @@ module fields_ng_module
     type(fields_3d),dimension(nf3din) :: f3din
     type(fields_4d),dimension(nf4d) :: f4d
 
-! essential 2d/3d fields at previous and current times
-    real,dimension(:,:,:,:),allocatable :: f2d_save
-    real,dimension(:,:,:,:,:),allocatable :: f3d_save
+! essential 2d fields (lower boundary conditions and AMIE aurora) at every time sub-cycling
+    real,dimension(:,:,:,:),allocatable :: f2d_save ! (t_lbc,u_lbc,v_lbc,z_lbc,flx_he,ekvg,efxg)
 
-! boundaries (essential)
+! essential 3d fields (electric fields) at every time sub-cycling
+    real,dimension(:,:,:,:,:),allocatable :: f3d_save ! (ex,ey,ez)
+
+! lateral boundaries (essential), fields are defined in bndry
     real,dimension(:,:,:,:,:),allocatable :: lon_b,lat_b
+
+! OP is further sub-cycled, therefore it is defined separately
     real,dimension(:,:,:,:),allocatable :: op_lon_b,op_lat_b
 
 ! auxiliary fields
-    real,dimension(:,:),allocatable :: qteaur,chi
+    real,dimension(:,:),allocatable :: tlbc,ulbc,vlbc,tlbc_nm,ulbc_nm,vlbc_nm,qteaur,chi
     real,dimension(:,:,:),allocatable :: &
       kldt,   kldu,   kldv,   kldo2,  kldo1,  kldhe,  xnmbar, xnmbari,xnmbarm, &
       cp,     kt,     km,     ui,     vi,     wi,     vo2,    vo1,    vn2,     &
@@ -54,10 +61,12 @@ module fields_ng_module
   type(fields),dimension(mx_ng) :: flds
 
 ! level unrelated fields
-  real,parameter :: hor = .25
+  real,parameter :: hor = .25 ! hor in cons_module is simply a constant
   real,parameter :: t0 = 0. ! t0 is not currently used, not sure whether it will be used in the future
+
+! fb,b are constant along lon, simplify to lon-independent constants
   real,dimension(3) :: fb
-  real,dimension(3,3) :: b ! fb,b are constant along lon, simplify to lon independent constants
+  real,dimension(3,3) :: b
 
 ! common fields across processes
   integer,dimension(mx_ng) :: itp,itc,maxlon,maxlat
@@ -66,20 +75,31 @@ module fields_ng_module
   real,dimension(:,:),allocatable :: expz
   real,dimension(:,:,:),allocatable :: difk,dift,xmue
 
+! not all fields are mapping in/out to reduce message passing
+! specifications are defined in fmap and bndry
+! sequence matters in these string arrays
+
+! fmap defines the fields to be mapped out
   character(len=*),dimension(*),parameter :: fmap = &
     (/'TN    ','UN    ','VN    ','O2    ','O1    ','N4S   ', &
       'NO    ','HE    ','AR    ','OP    ','N2D   ','TI    ', &
       'TE    ','NE    ','O2P   ','OMEGA ','Z     ','TN_NM ', &
       'UN_NM ','VN_NM ','O2_NM ','O1_NM ','N4S_NM','NO_NM ', &
       'OP_NM ','HE_NM ','AR_NM '/)
+
+! bndry defines the fields to be mapped in (lateral boundaries)
   character(len=*),dimension(*),parameter :: bndry = &
     (/'TN   ','UN   ','VN   ','O2   ','O1   ','N4S  ', &
       'NO   ','HE   ','AR   ','OP   ','OMEGA'/)
+
   integer,parameter :: nmap = size(fmap), nbnd = size(bndry)
 
+! ubfill indicates the following fields have filling values at the uppermost level
   character(len=*),dimension(*),parameter :: ubfill = &
     (/'TN   ','UN   ','VN   ','OP   ','N2D  ','TI   ', &
       'TE   ','O2P  ','TN_NM','UN_NM','VN_NM','OP_NM'/)
+
+! zlog indicates the following fields should be log-interpolated in z axis
   character(len=*),dimension(*),parameter :: zlog = &
     (/'TN    ','O2    ','O1    ','N4S   ','NO    ','HE    ', &
       'AR    ','OP    ','N2D   ','TI    ','TE    ','NE    ', &
@@ -100,20 +120,24 @@ module fields_ng_module
     allocate(domain(n_ng,4,0:ntask-1))
 
     do i_ng = 1,n_ng
+! divide subdomain
       call mkntask(ntask,nlon_ng(i_ng),nlat_ng(i_ng),ntaski,ntaskj,ierror)
       call distribute_1d(1,nlon_ng(i_ng),ntaski,mod(mytid,ntaski),flds(i_ng)%lon0,flds(i_ng)%lon1)
       call distribute_1d(1,nlat_ng(i_ng),ntaskj,mytid/ntaski,flds(i_ng)%lat0,flds(i_ng)%lat1)
 
+! each process keeps a record of the domain decomposition
       call mpi_allgather((/flds(i_ng)%lon0,flds(i_ng)%lon1,flds(i_ng)%lat0,flds(i_ng)%lat1/), &
         4,mpi_integer,domain(i_ng,:,:),4,mpi_integer,mpi_comm_world)
       maxlon(i_ng) = maxval(domain(i_ng,2,:)-domain(i_ng,1,:))+5
       maxlat(i_ng) = maxval(domain(i_ng,4,:)-domain(i_ng,3,:))+5
 
+! include ghost points
       flds(i_ng)%lond0 = flds(i_ng)%lon0-2
       flds(i_ng)%lond1 = flds(i_ng)%lon1+2
       flds(i_ng)%latd0 = flds(i_ng)%lat0-2
       flds(i_ng)%latd1 = flds(i_ng)%lat1+2
 
+! lateral boundaries are explicitly marked for easy check
       flds(i_ng)%is_bndry = .false.
       if (flds(i_ng)%lon0 == 1) flds(i_ng)%is_bndry(1) = .true.
       if (flds(i_ng)%lon1 == nlon_ng(i_ng)) flds(i_ng)%is_bndry(2) = .true.
@@ -173,12 +197,6 @@ module fields_ng_module
       allocate(flds(i_ng)%rjac(lond0:lond1,latd0:latd1,2,2))
 
 ! essential fields
-      allocate(flds(i_ng)%tlbc(lond0:lond1,latd0:latd1))
-      allocate(flds(i_ng)%ulbc(lond0:lond1,latd0:latd1))
-      allocate(flds(i_ng)%vlbc(lond0:lond1,latd0:latd1))
-      allocate(flds(i_ng)%tlbc_nm(lond0:lond1,latd0:latd1))
-      allocate(flds(i_ng)%ulbc_nm(lond0:lond1,latd0:latd1))
-      allocate(flds(i_ng)%vlbc_nm(lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%t_lbc(lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%u_lbc(lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%v_lbc(lond0:lond1,latd0:latd1))
@@ -280,6 +298,12 @@ module fields_ng_module
       endif
 
 ! auxiliary fields
+      allocate(flds(i_ng)%tlbc(lond0:lond1,latd0:latd1))
+      allocate(flds(i_ng)%ulbc(lond0:lond1,latd0:latd1))
+      allocate(flds(i_ng)%vlbc(lond0:lond1,latd0:latd1))
+      allocate(flds(i_ng)%tlbc_nm(lond0:lond1,latd0:latd1))
+      allocate(flds(i_ng)%ulbc_nm(lond0:lond1,latd0:latd1))
+      allocate(flds(i_ng)%vlbc_nm(lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%qteaur(lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%chi(lond0:lond1,latd0:latd1))
 

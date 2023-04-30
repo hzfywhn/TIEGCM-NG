@@ -63,11 +63,10 @@
      |  nudge_fields=>flds,nudge_nlb=>nlb,nudge_nf4d=>nf4d,
      |  nudge_time=>time,nudge_itime=>itime,
      |  wrap,lb_idx,f4d_idx,no_fill,fill_value
-      use fields_ng_module,only: flds,nf3din,nf2din,
+      use fields_ng_module,only:
      |  modeltime_ng=>modeltime,init_ng,alloc_fields
-      use level_outer_ng_module,only: init_mapping_1=>init_mapping,
-     |  map_in_1=>map_in,set_bndry_1=>set_bndry
-      use levels_inner_ng_module,only: init_mapping,map_in,set_bndry
+      use level_outer_ng_module,only: init_mapping_1=>init_mapping
+      use levels_inner_ng_module,only: init_mapping
       use sync_ng_module,only: init_sync
       use output_ng_module,only: init_output=>init,
      |  output_ng=>output,finalize_output=>finalize
@@ -113,7 +112,7 @@
       integer(kind=8) :: nsecs ! current model time in seconds,
                                ! including model day
       logical :: time2write,wrprim,wrsech,newseries_sech,
-     |  newseries_prim,iseries_sech,iseries_prim,initialized
+     |  newseries_prim,iseries_sech,iseries_prim
       real :: secs_per_step,dday,
      |  time0,          time1,
      |  time0_step,     time1_step,
@@ -205,6 +204,7 @@
       itp = itc
       itc = itmp
 !
+! glon0 corresponds to lon0:lon1 (1,nlonp4)
       glon0(3:nlonp2) = glon
       glon0(1:2) = glon(1)-(/2,1/)*dlon
       glon0(nlonp2+1:nlonp4) = glon(nlon)+(/1,2/)*dlon
@@ -258,9 +258,9 @@
         call init_mapping
         call init_sync
         call set_const_fields_ng
-        initialized = .false.
+! initialization is not complete since ng fields haven't been filled
       endif
-!
+
 ! nudge module should be initialized after ng module
 ! since ng locations are used in nudge module
       if (nudge_lbc .or. nudge_f4d) then
@@ -405,6 +405,7 @@
 !
       modelsec = mtime_to_secs(modeltime)-start_day*86400
       if (nudge_lbc .or. nudge_f4d) then
+! read external fields interpolate spatially
         if (nudge_time(nudge_itime+1) < modelsec)
      |    call nudge_update(modelsec)
       endif
@@ -415,6 +416,7 @@
      |    nudge_time(nudge_itime)<=modelsec .and.
      |    modelsec<=nudge_time(nudge_itime+1)) then
 
+! temporal interpolation
           delta = nudge_time(nudge_itime+1)-nudge_time(nudge_itime)
           fac1 = (nudge_time(nudge_itime+1)-modelsec)/delta
           fac2 = (modelsec-nudge_time(nudge_itime))/delta
@@ -441,6 +443,7 @@
                   tmp_lbc = z_lbc(lon0:lon1,lat0:lat1)
               endselect
 
+! find the corresponding grid and replace the model fields
               do lat = latbeg,latend
                 if (wrap) then
                   do i = lon0,lon1
@@ -810,34 +813,13 @@
 #endif
 !
       if (nesting) then
-        if (.not. initialized) then
-          call init_fields_ng
-          call map_in_1(0)
-          call set_bndry_1(.false.)
-          do ifld = 1,nf3din
-            flds(1)%f3din(ifld)%data = flds(1)%f3d_save(:,:,:,0,ifld)
-          enddo
-          do ifld = 1,nf2din
-            flds(1)%f2din(ifld)%data = flds(1)%f2d_save(:,:,0,ifld)
-          enddo
-          do i_ng = 2,n_ng
-            call map_in(0,i_ng)
-            call set_bndry(.false.,i_ng)
-            do ifld = 1,nf3din
-              flds(i_ng)%f3din(ifld)%data =
-     |          flds(i_ng)%f3d_save(:,:,:,0,ifld)
-            enddo
-            do ifld = 1,nf2din
-              flds(i_ng)%f2din(ifld)%data =
-     |          flds(i_ng)%f2d_save(:,:,0,ifld)
-            enddo
-          enddo
-          initialized = .true.
-        endif
+! fill ng fields with global fields, this finishes initialization
+        if (istep == 1) call init_fields_ng
 
         modeltime_ng = modelsec
         call advance_ng(1)
 
+! in case lon=1,2 or lon=nlonp4-1,nlonp4 are not correctly replaced
         call mp_periodic_f4d(itc)
 
         if (time2write) then

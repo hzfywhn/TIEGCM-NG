@@ -19,6 +19,9 @@ subroutine interp_fields_ng(i_ng)
   t = (/(it,it=1,t1-1)/)
   t_sub = (/(it,it=0,t1_sub)/)
 
+! index 0 is from initialization or previous iteration
+! index nstep is from boundary mapping from global fields
+! in case of round-off errors, index 0 and nstep are excluded from interpolation
   do lat = flds(i_ng)%latd0,flds(i_ng)%latd1
     do i = flds(i_ng)%lond0,flds(i_ng)%lond1
       do ifld = 1,nf3din

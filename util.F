@@ -1476,7 +1476,9 @@
 !-------------------------------------------------------------------
       function isclose(a,b) result(flag)
       implicit none
-
+!
+! check whether a and b are absolutely or relatively close
+!
       real,intent(in) :: a,b
       logical :: flag
 

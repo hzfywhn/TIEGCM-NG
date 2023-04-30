@@ -1,4 +1,5 @@
 module sync_ng_module
+! sync ghost points, this module is called whenever a procedure violating the consistency is executed
 
   use params_module,only: mx_ng
   implicit none
@@ -27,6 +28,7 @@ module sync_ng_module
       lat0 = flds(i_ng)%lat0
       lat1 = flds(i_ng)%lat1
 
+! the following assignment will exactly happen once
       do itask = 0,ntask-1
         if (domain(i_ng,2,itask)==lon0-1 .and. domain(i_ng,3,itask)==lat0 .and. domain(i_ng,4,itask)==lat1) &
           left(i_ng) = itask

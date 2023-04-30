@@ -1,4 +1,5 @@
 module dffm_ng_module
+! calculate finite difference and centered mean
 
   implicit none
 

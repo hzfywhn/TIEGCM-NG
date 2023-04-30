@@ -1,4 +1,5 @@
 module char_module
+! some useful functions to find a string in a string array
 
   implicit none
 

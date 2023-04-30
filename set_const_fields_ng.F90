@@ -9,6 +9,7 @@ subroutine set_const_fields_ng
   contains
 !-----------------------------------------------------------------------
   subroutine set_const
+! grid related parameters
 
     use params_module,only: n_ng,nlevp1_ng,zibot,glat_ng
     use cons_module,only: default_step,smooth_fac,dtr,re,difk,dift,xmue
@@ -81,6 +82,7 @@ subroutine set_const_fields_ng
   end subroutine set_const
 !-----------------------------------------------------------------------
   subroutine set_magfield
+! magnetic field related parameters
 
     use params_module,only: n_ng,glon_ng,glat_ng
     use cons_module,only: hs,dtr

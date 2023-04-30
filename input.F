@@ -2307,6 +2307,7 @@
         call shutdown('CTMT_NCFILE not allowed at 5-deg resolution')
       endif
 !
+! check for the compliance of nesting parameters
       if (nesting) then
         n_ng = count(nstep_ng/=ispval)
         if (count(dlev_ng/=spval)/=n_ng .or.
@@ -2330,49 +2331,62 @@
      |      call shutdown('GLON1_NG,GLAT1_NG'//
      |      ' must be strictly decreasing')
         enddo
+
+! check for the compliance of nudging parameters
+        if (count(len_trim(nudge_ncfile)>0) > 0) then
+          if (count(len_trim(nudge_flds)>0) == 0) then
+            nudge_flds(1) = 'TN'
+            nudge_flds(2) = 'UN'
+            nudge_flds(3) = 'VN'
+            nudge_flds(4) = 'Z'
+          endif
+          if (count(nudge_level) /= n_ng+1)
+     |      call shutdown('NUDGE_LEVEL must be '//
+     |      'the number of nesting levels + 1')
+          if (any(nudge_sponge < 0))
+     |      call shutdown('NUDGE_SPONGE must be non-negative')
+          where (nudge_sponge == spval) nudge_sponge = 0
+          if (any(nudge_delta <= 0))
+     |      call shutdown('NUDGE_DELTA must be positive')
+          where (nudge_delta == spval) nudge_delta = 1
+          if (any(nudge_power < 0))
+     |      call shutdown('NUDGE_POWER must be non-negative')
+          where (nudge_power == spval) nudge_power = 0
+          if (nudge_alpha < 0)
+     |      call shutdown('NUDGE_ALPHA must be non-negative')
+          if (nudge_alpha == spval) nudge_alpha = 0
+          if (nudge_tshift == ispval) nudge_tshift = 0
+        else
+          if (len_trim(nudge_ncpre)>0 .or. len_trim(nudge_ncpost)>0 .or.
+     |      any(len_trim(nudge_flds)>0) .or. any(nudge_level) .or.
+     |      nudge_lbc .or. nudge_f4d .or. nudge_pert .or.
+     |      any(nudge_sponge/=spval) .or. any(nudge_delta/=spval) .or.
+     |      any(nudge_power/=spval) .or. nudge_alpha/=spval .or.
+     |      nudge_tshift/=ispval)
+     |      call shutdown('NUDGE_NCFILE must be set if any of '//
+     |      'NUDGE_NCPRE,NUDGE_NCPOST,NUDGE_FLDS,NUDGE_LBC,'//
+     |      'NUDGE_F4D,NUDGE_PERT,NUDGE_LEVEL,NUDGE_SPONGE,'//
+     |      'NUDGE_DELTA,NUDGE_POWER,NUDGE_ALPHA,NUDGE_TSHIFT is set')
+        endif
       else
         if (any(nstep_ng/=ispval) .or. any(glat0_ng/=spval) .or.
      |    any(glat1_ng/=spval) .or. any(dlat_ng/=spval) .or.
      |    any(glon0_ng/=spval) .or. any(dlon_ng/=spval) .or.
-     |    any(len_trim(fileout_ng)>0) .or. any(len_trim(varout_ng)>0))
-     |    call shutdown('NESTING must be true if any of '//
-     |    'NSTEP_NG,DLEV_NG,GLAT0_NG,GLAT1_NG,DLAT_NG,'//
-     |    'GLON0_NG,GLON1_NG,DLON_NG,FILEOUT_NG,VAROUT_NG is set')
-      endif
-!
-      if (count(len_trim(nudge_ncfile)>0) > 0) then
-        if (count(len_trim(nudge_flds)>0) == 0) then
-          nudge_flds(1) = 'TN'
-          nudge_flds(2) = 'UN'
-          nudge_flds(3) = 'VN'
-          nudge_flds(4) = 'Z'
-        endif
-        if (any(nudge_sponge < 0))
-     |    call shutdown('NUDGE_SPONGE must be non-negative')
-        where (nudge_sponge == spval) nudge_sponge = 0
-        if (any(nudge_delta <= 0))
-     |    call shutdown('NUDGE_DELTA must be positive')
-        where (nudge_delta == spval) nudge_delta = 1
-        if (any(nudge_power < 0))
-     |    call shutdown('NUDGE_POWER must be non-negative')
-        where (nudge_power == spval) nudge_power = 0
-        if (nudge_alpha < 0)
-     |    call shutdown('NUDGE_ALPHA must be non-negative')
-        if (nudge_alpha == spval) nudge_alpha = 0
-        if (nudge_tshift == ispval) nudge_tshift = 0
-      else
-        if (len_trim(nudge_ncpre)>0 .or. len_trim(nudge_ncpost)>0 .or.
+     |    any(len_trim(fileout_ng)>0) .or.
+     |    any(len_trim(varout_ng)>0) .or.
+     |    count(len_trim(nudge_ncfile)>0) > 0 .or.
+     |    len_trim(nudge_ncpre)>0 .or. len_trim(nudge_ncpost)>0 .or.
      |    any(len_trim(nudge_flds)>0) .or. nudge_lbc .or. nudge_f4d .or.
      |    nudge_pert .or. any(nudge_level) .or.
      |    any(nudge_sponge/=spval) .or. any(nudge_delta/=spval) .or.
      |    any(nudge_power/=spval) .or. nudge_alpha/=spval .or.
      |    nudge_tshift/=ispval)
-     |    call shutdown('NUDGE_NCFILE must be set if any of '//
-     |    'NUDGE_NCPRE,NUDGE_NCPOST,NUDGE_FLDS,NUDGE_LBC,'//
-     |    'NUDGE_F4D,NUDGE_PERT,NUDGE_LEVEL,NUDGE_SPONGE,'//
-     |    'NUDGE_DELTA,NUDGE_POWER,NUDGE_ALPHA,NUDGE_TSHIFT is set')
+     |    call shutdown('NESTING must be true if any of '//
+     |    'NSTEP_NG,DLEV_NG,GLAT0_NG,GLAT1_NG,DLAT_NG,'//
+     |    'GLON0_NG,GLON1_NG,DLON_NG,FILEOUT_NG,VAROUT_NG,'//
+     |    ' or any other nudging related parameters are set')
       endif
-
+!
       end subroutine inp_lbc
 !-----------------------------------------------------------------------
       end module input_module
