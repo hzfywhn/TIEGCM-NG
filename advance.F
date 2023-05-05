@@ -19,11 +19,12 @@
       use heelis_module,only: heelis
       use wei05sc,only: weimer05,       ! Weimer 2005 model
      |  wei05sc_fac  ! field-aligned current diagnostic (nmlonp1,nmlat)
-      use input_module,only: start,start_day,step,idynamo=>dynamo,
+      use input_module,only: start,step,idynamo=>dynamo,
      |  calendar_advance,gpi_ncfile,potential_model,wei05sc_ncfile,
      |  imf_ncfile,current_pg,current_kq,iamie,amie_ibkg,amiesh,amienh,
-     |  nesting,dlev_ng,dlat_ng,dlon_ng,glat0_ng,glat1_ng,glon0_ng,
-     |  glon1_ng,nudge_lbc,nudge_f4d,nudge_pert,nudge_level,nudge_alpha
+     |  start_day,nesting,dlev_ng,dlat_ng,dlon_ng,glat0_ng,glat1_ng,
+     |  glon0_ng,glon1_ng,nudge_refdate,nudge_lbc,nudge_f4d,nudge_pert,
+     |  nudge_level,nudge_alpha
       use input_module,only: 
      |  power  ,power_time  ,ntimes_power, rd_power,
      |  ctpoten,ctpoten_time,ntimes_ctpoten, rd_ctpoten,
@@ -403,7 +404,7 @@
 !
       call tuvz_lbc(istep,iyear,iday,secs,itp)
 !
-      modelsec = mtime_to_secs(modeltime)-start_day*86400
+      modelsec = mtime_to_secs(modeltime)-nudge_refdate*86400
       if (nudge_lbc .or. nudge_f4d) then
 ! read external fields interpolate spatially
         if (nudge_time(nudge_itime+1) < modelsec)
@@ -816,7 +817,7 @@
 ! fill ng fields with global fields, this finishes initialization
         if (istep == 1) call init_fields_ng
 
-        modeltime_ng = modelsec
+        modeltime_ng = mtime_to_secs(modeltime)-start_day*86400
         call advance_ng(1)
 
 ! in case lon=1,2 or lon=nlonp4-1,nlonp4 are not correctly replaced
@@ -877,7 +878,7 @@
                     enddo
                   endif
 
-                  if (lonbeg<lonend.and.offbeg+1==offend) then
+                  if (lonbeg<lonend .and. offbeg+1==offend) then
                     do i = lonbeg,lonend1
                       if (no_fill(lb_idx(ifld)) .or. .not.
      |                  isclose(nclbc(i,lat,ifld),
@@ -896,7 +897,7 @@
                     enddo
                   endif
 
-                  if (lonbeg>lonend.and.offbeg==offend+1) then
+                  if (lonbeg>lonend .and. offbeg==offend+1) then
                     do i = lonbeg,lon1
                       if (no_fill(lb_idx(ifld)) .or. .not.
      |                  isclose(nclbc(i,lat,ifld),

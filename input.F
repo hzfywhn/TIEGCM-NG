@@ -167,12 +167,12 @@
       character(len=16),dimension(mxfsech) :: varout_ng
       character(len=mxlen_filename) :: nudge_ncpre,nudge_ncpost
       character(len=mxlen_filename),dimension(mxhvols) :: nudge_ncfile
+      integer :: nudge_refdate,nudge_tshift
       character(len=16),dimension(mxfsech) :: nudge_flds
       logical :: nudge_lbc,nudge_f4d,nudge_pert
       logical,dimension(0:mx_ng) :: nudge_level
       real,dimension(2) :: nudge_sponge,nudge_delta,nudge_power
       real :: nudge_alpha
-      integer :: nudge_tshift
 !
 ! Namelist for read:
       namelist/tgcm_input/ 
@@ -193,8 +193,9 @@
      |  amienh,amiesh,amie_ibkg,he_coefs_ncfile,nesting,nstep_ng,
      |  dlev_ng,glat0_ng,glat1_ng,dlat_ng,glon0_ng,glon1_ng,dlon_ng,
      |  fileout_ng,varout_ng,nudge_ncpre,nudge_ncfile,nudge_ncpost,
-     |  nudge_flds,nudge_lbc,nudge_f4d,nudge_pert,nudge_level,
-     |  nudge_sponge,nudge_delta,nudge_power,nudge_alpha,nudge_tshift
+     |  nudge_refdate,nudge_flds,nudge_lbc,nudge_f4d,nudge_pert,
+     |  nudge_level,nudge_sponge,nudge_delta,nudge_power,nudge_alpha,
+     |  nudge_tshift
 !
 ! List of fields that are always written to secondary histories:
       character(len=16) :: secflds_mandatory(6) =
@@ -358,6 +359,7 @@
       nudge_ncpre = ' '
       nudge_ncfile = ' '
       nudge_ncpost = ' '
+      nudge_refdate = ispval
       nudge_flds = ' '
       nudge_lbc = .false.
       nudge_f4d = .false.
@@ -2334,6 +2336,7 @@
 
 ! check for the compliance of nudging parameters
         if (count(len_trim(nudge_ncfile)>0) > 0) then
+          if (nudge_refdate == ispval) nudge_refdate = start_day
           if (count(len_trim(nudge_flds)>0) == 0) then
             nudge_flds(1) = 'TN'
             nudge_flds(2) = 'UN'
@@ -2358,14 +2361,14 @@
           if (nudge_tshift == ispval) nudge_tshift = 0
         else
           if (len_trim(nudge_ncpre)>0 .or. len_trim(nudge_ncpost)>0 .or.
-     |      any(len_trim(nudge_flds)>0) .or. any(nudge_level) .or.
-     |      nudge_lbc .or. nudge_f4d .or. nudge_pert .or.
-     |      any(nudge_sponge/=spval) .or. any(nudge_delta/=spval) .or.
-     |      any(nudge_power/=spval) .or. nudge_alpha/=spval .or.
-     |      nudge_tshift/=ispval)
+     |      nudge_refdate/=ispval .or. any(len_trim(nudge_flds)>0) .or.
+     |      any(nudge_level) .or. nudge_lbc .or. nudge_f4d .or.
+     |      nudge_pert .or. any(nudge_sponge/=spval) .or.
+     |      any(nudge_delta/=spval) .or. any(nudge_power/=spval) .or.
+     |      nudge_alpha/=spval .or. nudge_tshift/=ispval)
      |      call shutdown('NUDGE_NCFILE must be set if any of '//
-     |      'NUDGE_NCPRE,NUDGE_NCPOST,NUDGE_FLDS,NUDGE_LBC,'//
-     |      'NUDGE_F4D,NUDGE_PERT,NUDGE_LEVEL,NUDGE_SPONGE,'//
+     |      'NUDGE_NCPRE,NUDGE_NCPOST,NUDGE_REFDATE,NUDGE_FLDS,'//
+     |      'NUDGE_LBC,NUDGE_F4D,NUDGE_PERT,NUDGE_LEVEL,NUDGE_SPONGE,'//
      |      'NUDGE_DELTA,NUDGE_POWER,NUDGE_ALPHA,NUDGE_TSHIFT is set')
         endif
       else
@@ -2386,7 +2389,7 @@
      |    'GLON0_NG,GLON1_NG,DLON_NG,FILEOUT_NG,VAROUT_NG,'//
      |    ' or any other nudging related parameters are set')
       endif
-!
+
       end subroutine inp_lbc
 !-----------------------------------------------------------------------
       end module input_module
