@@ -23,8 +23,8 @@
      |  calendar_advance,gpi_ncfile,potential_model,wei05sc_ncfile,
      |  imf_ncfile,current_pg,current_kq,iamie,amie_ibkg,amiesh,amienh,
      |  start_day,nesting,dlev_ng,dlat_ng,dlon_ng,glat0_ng,glat1_ng,
-     |  glon0_ng,glon1_ng,nudge_refdate,nudge_lbc,nudge_f4d,nudge_pert,
-     |  nudge_level,nudge_alpha
+     |  glon0_ng,glon1_ng,nudge_lbc,nudge_f4d,nudge_pert,nudge_level,
+     |  nudge_alpha
       use input_module,only: 
      |  power  ,power_time  ,ntimes_power, rd_power,
      |  ctpoten,ctpoten_time,ntimes_ctpoten, rd_ctpoten,
@@ -404,9 +404,9 @@
 !
       call tuvz_lbc(istep,iyear,iday,secs,itp)
 !
-      modelsec = mtime_to_secs(modeltime)-nudge_refdate*86400
+      modelsec = mtime_to_secs(modeltime)-start_day*86400
       if (nudge_lbc .or. nudge_f4d) then
-! read external fields interpolate spatially
+! read external fields and interpolate spatially
         if (nudge_time(nudge_itime+1) < modelsec)
      |    call nudge_update(modelsec)
       endif
@@ -817,7 +817,7 @@
 ! fill ng fields with global fields, this finishes initialization
         if (istep == 1) call init_fields_ng
 
-        modeltime_ng = mtime_to_secs(modeltime)-start_day*86400
+        modeltime_ng = modelsec
         call advance_ng(1)
 
 ! in case lon=1,2 or lon=nlonp4-1,nlonp4 are not correctly replaced

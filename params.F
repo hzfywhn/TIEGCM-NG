@@ -10,27 +10,27 @@
 ! tiegcmlicense.txt.
 !
 ! Geographic grid parameters:
+      real,parameter ::
+     |  dlat  = DLAT,                ! delta latitude
+     |  glat1 = -90+dlat/2,          ! first latitude
+     |  dlon  = DLON,                ! delta longitude
+     |  glon1 = GLON1,               ! first longitude
+     |  dlev  = DLEV,                ! delta level (same for midpoints and interfaces)
+     |  dz    = dlev,                ! delta level (alias for dlev)
+     |  zitop = ZITOP,               ! top interface level
+     |  zibot = ZIBOT,               ! bottom interface level
+     |  zmtop = zitop+dz/2,          ! top midpoint level
+     |  zmbot = zibot+dz/2           ! bottom midpoint level
       integer,parameter :: 
-     |  nlat = NLAT,                 ! number of latitudes
-     |  nlon = NLON,                 ! number of longitudes
-     |  nlev = NLEV,                 ! number of midpoint levels 
-     |  nilev = NLEV,                ! number of interface levels
+     |  nlat = 180/dlat,             ! number of latitudes
+     |  nlon = 360/dlon,             ! number of longitudes
+     |  nlev = (zitop-zibot)/dlev,   ! number of midpoint levels 
+     |  nilev = nlev,                ! number of interface levels
      |  nlonp4 = nlon+4,             ! includes periodic points in lon
      |  nlevp1 = nlev+1,
      |  nilevp1 = nilev+1,
      |  nlonp1=nlon+1, nlatp1=nlat+1,
      |  nlonp2=nlon+2, nlatp2=nlat+2
-      real,parameter ::
-     |  glat1 = GLAT1,               ! first latitude
-     |  dlat  = DLAT,                ! delta latitude
-     |  glon1 = GLON1,               ! first longitude
-     |  dlon  = DLON,                ! delta longitude
-     |  dlev  = (ZITOP-ZIBOT)/NLEV,  ! delta level (same for midpoints and interfaces)
-     |  dz    = dlev,                ! delta level (alias for dlev)
-     |  zmtop = ZMTOP,               ! top midpoint level
-     |  zmbot = ZMBOT,               ! bottom midpoint level
-     |  zitop = ZITOP,               ! top interface level
-     |  zibot = ZIBOT                ! bottom interface level
       real :: glon(nlon),glat(nlat),zpmid(nlevp1),zpint(nlevp1)
       real,parameter ::
      |  spval = 1.e36

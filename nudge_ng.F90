@@ -34,20 +34,23 @@ module nudge_ng_module
 ! check the compliance of the external field
 
     use params_module, only: mxhvols, zibot
-    use input_module, only: nudge_ncpre, nudge_ncfile, nudge_ncpost, nudge_flds, nudge_sponge, nudge_tshift
+    use input_module, only: start_year, start_day, nudge_ncpre, nudge_ncfile, nudge_ncpost, &
+      nudge_flds, nudge_use_refdate, nudge_refdate, nudge_sponge
     use fields_module, only: f4d
     use char_module, only: find_index
     use netcdf, only: nf90_open, nf90_inq_dimid, nf90_inquire_dimension, nf90_inq_varid, &
       nf90_get_var, nf90_inq_var_fill, nf90_close, nf90_nowrite, nf90_nofill
 
     integer, parameter :: maxnt = 1440
-    real, parameter :: eps = 1e-12
     integer :: stat, dimid_lon, dimid_lat, dimid_lev, dimid_time, &
-      varid_lon, varid_lat, varid_lev, varid_time, ifld, nofill
+      varid_lon, varid_lat, varid_lev, varid_time, varid_date, varid_datesec, &
+      ifld, nofill, it, yr, mn, dy, dt0, start_datenum
     real :: dlon
     real(kind=4) :: fillvalue
-    integer, dimension(mxhvols, maxnt) :: t
+    integer, dimension(mxhvols, maxnt) :: t, dt, dts
     real, dimension(1) :: tmp
+    logical, external :: isclose
+    integer, external :: to_doy, to_datenum
     external :: shutdown
 
     stat = nf90_open(trim(nudge_ncpre)//trim(nudge_ncfile(1))//trim(nudge_ncpost), nf90_nowrite, ncid)
@@ -61,7 +64,7 @@ module nudge_ng_module
 ! if the external field covers the full longitude cycle,
 ! then model fields at lon=1,2 and lon=nlonp4-1,nlonp4 will be obtained from the external field
     dlon = (lon(nlon)-lon(1)) / (nlon-1)
-    if (abs(lon(1)+360-lon(nlon)-dlon) < eps*dlon) then
+    if (isclose(lon(1)+360-lon(nlon), dlon)) then
       wrap = .true.
     else
       wrap = .false.
@@ -114,8 +117,15 @@ module nudge_ng_module
       stat = nf90_open(trim(nudge_ncpre)//trim(nudge_ncfile(ifile))//trim(nudge_ncpost), nf90_nowrite, ncid)
       stat = nf90_inq_dimid(ncid, 'time', dimid_time)
       stat = nf90_inquire_dimension(ncid, dimid_time, len=nt(ifile))
-      stat = nf90_inq_varid(ncid, 'time', varid_time)
-      stat = nf90_get_var(ncid, varid_time, t(ifile, 1: nt(ifile)))
+      if (nudge_use_refdate) then
+        stat = nf90_inq_varid(ncid, 'time', varid_time)
+        stat = nf90_get_var(ncid, varid_time, t(ifile, 1: nt(ifile)))
+      else
+        stat = nf90_inq_varid(ncid, 'date', varid_date)
+        stat = nf90_get_var(ncid, varid_date, dt(ifile, 1: nt(ifile)))
+        stat = nf90_inq_varid(ncid, 'datesec', varid_datesec)
+        stat = nf90_get_var(ncid, varid_datesec, dts(ifile, 1: nt(ifile)))
+      endif
       stat = nf90_close(ncid)
     enddo
 
@@ -132,10 +142,22 @@ module nudge_ng_module
     if (ntime <= 1) call shutdown('nudge_ncfile must have at least 2 time points')
 
     allocate(time(ntime))
-    do ifile = 1, nfile
-      time(t0(ifile): t1(ifile)) = t(ifile, 1: nt(ifile))
-    enddo
-    time = time + nudge_tshift
+    start_datenum = to_datenum(start_year, start_day)
+    if (nudge_use_refdate) then
+      dt0 = (to_datenum(nudge_refdate(1), nudge_refdate(2)) - start_datenum) * 86400
+      do ifile = 1, nfile
+        time(t0(ifile): t1(ifile)) = t(ifile, 1: nt(ifile)) + dt0
+      enddo
+    else
+      do ifile = 1, nfile
+        do it = 1, nt(ifile)
+          yr = dt(ifile, it) / 10000
+          mn = mod(dt(ifile, it), 10000) / 100
+          dy = mod(dt(ifile, it), 100)
+          time(t0(ifile) + it - 1) = (to_datenum(yr, to_doy(yr, mn, dy)) - start_datenum) * 86400 + dts(ifile, it)
+        enddo
+      enddo
+    endif
 
     do ifld = 1, nlb
       lb_idx(ifld) = find_index(lb(ifld), nudge_flds)

@@ -1,4 +1,3 @@
-#include <defs.h>
 !
       module input_module
 !
@@ -167,10 +166,10 @@
       character(len=16),dimension(mxfsech) :: varout_ng
       character(len=mxlen_filename) :: nudge_ncpre,nudge_ncpost
       character(len=mxlen_filename),dimension(mxhvols) :: nudge_ncfile
-      integer :: nudge_refdate,nudge_tshift
       character(len=16),dimension(mxfsech) :: nudge_flds
-      logical :: nudge_lbc,nudge_f4d,nudge_pert
+      logical :: nudge_lbc,nudge_f4d,nudge_pert,nudge_use_refdate
       logical,dimension(0:mx_ng) :: nudge_level
+      integer,dimension(2) :: nudge_refdate
       real,dimension(2) :: nudge_sponge,nudge_delta,nudge_power
       real :: nudge_alpha
 !
@@ -190,12 +189,12 @@
      |  imf_ncfile,saber_ncfile,tidi_ncfile,sech_nbyte,f107_time,
      |  f107a_time,hpss_path,current_pg,current_kq,calc_helium,
      |  enforce_opfloor,bgrddata_ncfile,ctmt_ncfile,opdiffcap,
-     |  amienh,amiesh,amie_ibkg,he_coefs_ncfile,nesting,nstep_ng,
-     |  dlev_ng,glat0_ng,glat1_ng,dlat_ng,glon0_ng,glon1_ng,dlon_ng,
-     |  fileout_ng,varout_ng,nudge_ncpre,nudge_ncfile,nudge_ncpost,
-     |  nudge_refdate,nudge_flds,nudge_lbc,nudge_f4d,nudge_pert,
-     |  nudge_level,nudge_sponge,nudge_delta,nudge_power,nudge_alpha,
-     |  nudge_tshift
+     |  amienh,amiesh,amie_ibkg,he_coefs_ncfile,
+     |  nesting,nstep_ng,dlev_ng,glat0_ng,glat1_ng,dlat_ng,
+     |  glon0_ng,glon1_ng,dlon_ng,fileout_ng,varout_ng,
+     |  nudge_ncpre,nudge_ncfile,nudge_ncpost,nudge_flds,
+     |  nudge_lbc,nudge_f4d,nudge_pert,nudge_level,nudge_use_refdate,
+     |  nudge_refdate,nudge_sponge,nudge_delta,nudge_power,nudge_alpha
 !
 ! List of fields that are always written to secondary histories:
       character(len=16) :: secflds_mandatory(6) =
@@ -359,17 +358,17 @@
       nudge_ncpre = ' '
       nudge_ncfile = ' '
       nudge_ncpost = ' '
-      nudge_refdate = ispval
       nudge_flds = ' '
       nudge_lbc = .false.
       nudge_f4d = .false.
       nudge_pert = .false.
       nudge_level = .false.
+      nudge_use_refdate = .false.
+      nudge_refdate = ispval
       nudge_sponge = spval
       nudge_delta = spval
       nudge_power = spval
       nudge_alpha = spval
-      nudge_tshift = ispval
 
       end subroutine inp_init
 !-------------------------------------------------------------------
@@ -2336,7 +2335,6 @@
 
 ! check for the compliance of nudging parameters
         if (count(len_trim(nudge_ncfile)>0) > 0) then
-          if (nudge_refdate == ispval) nudge_refdate = start_day
           if (count(len_trim(nudge_flds)>0) == 0) then
             nudge_flds(1) = 'TN'
             nudge_flds(2) = 'UN'
@@ -2346,6 +2344,8 @@
           if (count(nudge_level) /= n_ng+1)
      |      call shutdown('NUDGE_LEVEL must be '//
      |      'the number of nesting levels + 1')
+          if (nudge_refdate(1) == ispval) nudge_refdate(1) = start_year
+          if (nudge_refdate(2) == ispval) nudge_refdate(2) = start_day
           if (any(nudge_sponge < 0))
      |      call shutdown('NUDGE_SPONGE must be non-negative')
           where (nudge_sponge == spval) nudge_sponge = 0
@@ -2358,18 +2358,17 @@
           if (nudge_alpha < 0)
      |      call shutdown('NUDGE_ALPHA must be non-negative')
           if (nudge_alpha == spval) nudge_alpha = 0
-          if (nudge_tshift == ispval) nudge_tshift = 0
         else
           if (len_trim(nudge_ncpre)>0 .or. len_trim(nudge_ncpost)>0 .or.
-     |      nudge_refdate/=ispval .or. any(len_trim(nudge_flds)>0) .or.
-     |      any(nudge_level) .or. nudge_lbc .or. nudge_f4d .or.
-     |      nudge_pert .or. any(nudge_sponge/=spval) .or.
-     |      any(nudge_delta/=spval) .or. any(nudge_power/=spval) .or.
-     |      nudge_alpha/=spval .or. nudge_tshift/=ispval)
+     |      any(len_trim(nudge_flds)>0) .or. any(nudge_level) .or.
+     |      nudge_lbc .or. nudge_f4d .or. nudge_pert .or.
+     |      nudge_use_refdate .or. any(nudge_refdate/=ispval) .or.
+     |      any(nudge_sponge/=spval) .or. any(nudge_delta/=spval) .or.
+     |      any(nudge_power/=spval) .or. nudge_alpha/=spval)
      |      call shutdown('NUDGE_NCFILE must be set if any of '//
-     |      'NUDGE_NCPRE,NUDGE_NCPOST,NUDGE_REFDATE,NUDGE_FLDS,'//
-     |      'NUDGE_LBC,NUDGE_F4D,NUDGE_PERT,NUDGE_LEVEL,NUDGE_SPONGE,'//
-     |      'NUDGE_DELTA,NUDGE_POWER,NUDGE_ALPHA,NUDGE_TSHIFT is set')
+     |      'NUDGE_NCPRE,NUDGE_NCPOST,NUDGE_FLDS,NUDGE_LBC,NUDGE_F4D,'//
+     |      'NUDGE_PERT,NUDGE_LEVEL,NUDGE_USE_REFDATE,NUDGE_REFDATE,'//
+     |      'NUDGE_SPONGE,NUDGE_DELTA,NUDGE_POWER,NUDGE_ALPHA is set')
         endif
       else
         if (any(nstep_ng/=ispval) .or. any(glat0_ng/=spval) .or.
@@ -2379,11 +2378,11 @@
      |    any(len_trim(varout_ng)>0) .or.
      |    count(len_trim(nudge_ncfile)>0) > 0 .or.
      |    len_trim(nudge_ncpre)>0 .or. len_trim(nudge_ncpost)>0 .or.
-     |    any(len_trim(nudge_flds)>0) .or. nudge_lbc .or. nudge_f4d .or.
-     |    nudge_pert .or. any(nudge_level) .or.
+     |    any(len_trim(nudge_flds)>0) .or. any(nudge_level) .or.
+     |    nudge_lbc .or. nudge_f4d .or. nudge_pert .or.
+     |    nudge_use_refdate .or. any(nudge_refdate/=ispval) .or.
      |    any(nudge_sponge/=spval) .or. any(nudge_delta/=spval) .or.
-     |    any(nudge_power/=spval) .or. nudge_alpha/=spval .or.
-     |    nudge_tshift/=ispval)
+     |    any(nudge_power/=spval) .or. nudge_alpha/=spval)
      |    call shutdown('NESTING must be true if any of '//
      |    'NSTEP_NG,DLEV_NG,GLAT0_NG,GLAT1_NG,DLAT_NG,'//
      |    'GLON0_NG,GLON1_NG,DLON_NG,FILEOUT_NG,VAROUT_NG,'//
