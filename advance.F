@@ -823,13 +823,7 @@
 ! in case lon=1,2 or lon=nlonp4-1,nlonp4 are not correctly replaced
         call mp_periodic_f4d(itc)
 
-        if (time2write) then
-! output_ng supports write different variables to different nested levels
-! for now, all levels have the same output variables
-          do i_ng = 1,n_ng
-            call output_ng(i_ng)
-          enddo
-        endif
+        if (time2write) call output_ng
       endif
 !
       if (nudge_f4d .and. nudge_level(0)) then

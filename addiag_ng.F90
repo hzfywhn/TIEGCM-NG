@@ -3,6 +3,7 @@ subroutine addiag_ng(vc,mbar,barm,xnmbar,xnmbari,xnmbarm,z,zg,n2,i_ng)
   use params_module,only: nlevp1_ng,glat_ng
   use cons_module,only: rmassinv,rmassinv_he,dzgrav,p0,boltz,avo
   use fields_ng_module,only: flds,itp,dz,expz,expzmid_inv
+  use output_ng_module,only: addfld
   implicit none
 
   integer,intent(in) :: i_ng
@@ -87,5 +88,7 @@ subroutine addiag_ng(vc,mbar,barm,xnmbar,xnmbari,xnmbarm,z,zg,n2,i_ng)
     enddo
   enddo
   zg(nk,:,:) = 2.0*zg(nk-1,:,:)-zg(nk-2,:,:)
+
+  call addfld(zg,'ZG',i_ng)
 
 end subroutine addiag_ng

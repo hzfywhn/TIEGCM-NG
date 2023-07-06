@@ -3,8 +3,9 @@ recursive subroutine advance_ng(i_ng)
 ! enter low levels first before high levels, but finish high levels before low levels
 ! a recursive subroutine is suitable for such stack-like procedures
 
-  use params_module,only: n_ng
+  use params_module,only: n_ng,nlevp1_ng
   use input_module,only: nstep_ng,nstep_sub,nudge_lbc,nudge_f4d,nudge_pert,nudge_level,nudge_alpha
+  use cons_module,only: gask,grav
   use fields_ng_module,only: flds,nf3din,nf2din,itp,itc,modeltime,step
   use level_outer_ng_module,only: map_in_1=>map_in,map_out_1=>map_out,set_bndry_1=>set_bndry
   use levels_inner_ng_module,only: map_in,map_out,set_bndry
@@ -15,8 +16,10 @@ recursive subroutine advance_ng(i_ng)
   integer,intent(in) :: i_ng
 
   logical,parameter :: debug = .false.
-  integer :: istep,ifld,lat,i,latbeg,latend,lonbeg,lonend,offbeg,offend,lonbeg1,lonend1,k,itmp
+  integer :: istep,ifld,lat,i,nk,k,latbeg,latend,lonbeg,lonend,offbeg,offend,lonbeg1,lonend1,itmp
   real :: delta,fac1,fac2
+  real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
+    tn,mbar,omega,scheight,omegai,wn
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend) :: w1,w0
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: tmp_lbc
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend,nlb) :: nclbc
@@ -127,7 +130,6 @@ recursive subroutine advance_ng(i_ng)
       endif
     endif
 
-! TLBC,ULBC,VLBC,ZLBC are mandatory outputs (2d)
     call addfld(flds(i_ng)%t_lbc,'TLBC',i_ng)
     call addfld(flds(i_ng)%u_lbc,'ULBC',i_ng)
     call addfld(flds(i_ng)%v_lbc,'VLBC',i_ng)
@@ -159,6 +161,18 @@ recursive subroutine advance_ng(i_ng)
       i_ng)
 
     call dynamics_ng(istep,i_ng)
+
+    nk = nlevp1_ng(i_ng)
+    tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
+    mbar = flds(i_ng)%mbar(:,:,:,itp(i_ng))
+    omega = flds(i_ng)%w(:,:,:,itp(i_ng))
+    scheight = gask*tn/(mbar*grav)
+    do k = 1,nk-1
+      omegai(k,:,:) = 0.5*(omega(k,:,:)+omega(k+1,:,:))
+    enddo
+    omegai(nk,:,:) = 1.5*omega(nk,:,:)-0.5*omega(nk-1,:,:)
+    wn = omegai*scheight
+    call addfld(wn,'WN',i_ng)
 
     if (nudge_f4d .and. nudge_level(i_ng)) then
       if (latbeg<latend .and. time(itime)<=modeltime(i_ng) .and. modeltime(i_ng)<=time(itime+1)) then
@@ -231,7 +245,7 @@ recursive subroutine advance_ng(i_ng)
     itc(i_ng) = itmp
 
 ! output at every time step, for testing purpose only
-    if (debug) call output(i_ng)
+    if (debug) call output
   enddo
 
 ! save the last step for interpolation in the next iteration

@@ -1494,33 +1494,30 @@
 
       end function isclose
 !-------------------------------------------------------------------
-      function to_month_day(year,doy) result(month_day)
+      subroutine to_month_day(year,doy,month,day)
       implicit none
 !
 ! convert doy to month,day pair
 !
       integer,intent(in) :: year,doy
-      integer,dimension(2) :: month_day
+      integer,intent(out) :: month,day
 
-      integer :: mn,dy
       integer,dimension(12) :: days_in_month
 
       days_in_month = (/31,28,31,30,31,30,31,31,30,31,30,31/)
       if (mod(year,400)==0 .or.
      |  (mod(year,4)==0 .and. mod(year,100)/=0)) days_in_month(2) = 29
 
-      dy = doy
-      do mn = 1,12
-        if (dy > days_in_month(mn)) then
-          dy = dy - days_in_month(mn)
+      day = doy
+      do month = 1,12
+        if (day > days_in_month(month)) then
+          day = day - days_in_month(month)
         else
           exit
         endif
       enddo
 
-      month_day = (/mn,dy/)
-
-      end function to_month_day
+      end subroutine to_month_day
 !-------------------------------------------------------------------
       function to_doy(year,month,day) result(doy)
       implicit none

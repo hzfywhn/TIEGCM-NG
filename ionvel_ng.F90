@@ -3,6 +3,7 @@ subroutine ionvel_ng(ui,vi,wi,i_ng)
   use params_module,only: nlevp1_ng
   use cons_module,only: re
   use fields_ng_module,only: flds,itc
+  use output_ng_module,only: addfld
   implicit none
 
   integer,intent(in) :: i_ng
@@ -48,5 +49,9 @@ subroutine ionvel_ng(ui,vi,wi,i_ng)
   ui = ui*100.
   vi = vi*100.
   wi = wi*100.
+
+  call addfld(ui,'UI_ExB',i_ng)
+  call addfld(vi,'VI_ExB',i_ng)
+  call addfld(wi,'WI_ExB',i_ng)
 
 end subroutine ionvel_ng

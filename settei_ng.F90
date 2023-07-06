@@ -54,13 +54,11 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
 
   f107te = min(f107,235.)
 
-  where (abs(rlatm) >= pi/4.5)
-    a = 1.
-  elsewhere
-    a = .5*(1.+sin(pi*(abs(rlatm)-pi/9.)/(pi/4.5)))
-  endwhere
+  where (abs(rlatm) >= pi/4.5) a = 1.
+  where (abs(rlatm)<pi/4.5 .and. abs(rlatm)<=pi/18) a = 0.
+  where (abs(rlatm) > pi/18) a = .5*(1.+sin(pi*(abs(rlatm)-pi/4.5)/(pi/6.)))
 
-  fed = (-5.0e+7*f107te*a-4.0e+7*f107te)*1.2
+  fed = -9.0e+7*f107te*a
   fen = fed/2.
   fed = fed+qteaur
   fen = fen+qteaur
@@ -152,8 +150,10 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
   o1n = xnmbar*o1*rmassinv_o1
   n2n = xnmbar*n2*rmassinv_n2
 
-  qe = log(root_ne/(o2n+n2n+0.1*o1n))
-  qe = exp(-((((0.001996*qe+0.08034)*qe+1.166)*qe+6.941)*qe+12.75))
+!  qe = log(root_ne/(o2n+n2n+0.1*o1n))
+!  qe = exp(-((((0.001996*qe+0.08034)*qe+1.166)*qe+6.941)*qe+12.75))
+  qe = log(root_ne/(o2n+n2n+o1n))
+  qe = exp(-((((((0.00001249*qe+0.0005755)*qe+0.009346)*qe+0.059)*qe+0.04392)*qe-1.056)*qe-5.342))
 
   rhs = rhs-qe*qtot*evergs
   root_te = sqrt(te)
