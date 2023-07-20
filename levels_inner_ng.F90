@@ -130,7 +130,7 @@ module levels_inner_ng_module
 !-----------------------------------------------------------------------
   subroutine map_in(i_ng)
 
-    use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,zpint_ng,glon_ng,glat_ng,zibot,zitop
+    use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,zpint_ng,glon_ng,glat_ng
     use input_module,only: nstep_ng
     use fields_ng_module,only: flds,nf3din,nf2din,maxlon,maxlat,domain
     use interp_module,only: interp3d,interp2d
@@ -194,28 +194,22 @@ module levels_inner_ng_module
     do ifld = 1,nf3din
       flds(i_ng)%f3d_save(:,:,:,nstep_ng(i_ng),ifld) = interp3d( &
         zpint_ng(i_ng,1:nlevp1_ng(i_ng)), &
-        glon_ng(i_ng,flds(i_ng)%lond0:flds(i_ng)%lond1), &
-        glat_ng(i_ng,flds(i_ng)%latd0:flds(i_ng)%latd1), &
-        zibot,zitop, &
-        glon_ng(i_ng-1,-1),glon_ng(i_ng-1,nlon_ng(i_ng-1)+2), &
-        glat_ng(i_ng-1,-1),glat_ng(i_ng-1,nlat_ng(i_ng-1)+2), &
-        full3d(:,:,:,ifld))
+        glon_ng(i_ng,flds(i_ng)%lond0:flds(i_ng)%lond1),glat_ng(i_ng,flds(i_ng)%latd0:flds(i_ng)%latd1), &
+        zpint_ng(i_ng-1,1:nlevp1_ng(i_ng-1)), &
+        glon_ng(i_ng-1,-1:nlon_ng(i_ng-1)+2),glat_ng(i_ng-1,-1:nlat_ng(i_ng-1)+2),full3d(:,:,:,ifld))
     enddo
 
     do ifld = 1,nf2din
       flds(i_ng)%f2d_save(:,:,nstep_ng(i_ng),ifld) = interp2d( &
-        glon_ng(i_ng,flds(i_ng)%lond0:flds(i_ng)%lond1), &
-        glat_ng(i_ng,flds(i_ng)%latd0:flds(i_ng)%latd1), &
-        glon_ng(i_ng-1,-1),glon_ng(i_ng-1,nlon_ng(i_ng-1)+2), &
-        glat_ng(i_ng-1,-1),glat_ng(i_ng-1,nlat_ng(i_ng-1)+2), &
-        full2d(:,:,ifld))
+        glon_ng(i_ng,flds(i_ng)%lond0:flds(i_ng)%lond1),glat_ng(i_ng,flds(i_ng)%latd0:flds(i_ng)%latd1), &
+        glon_ng(i_ng-1,-1:nlon_ng(i_ng-1)+2),glat_ng(i_ng-1,-1:nlat_ng(i_ng-1)+2),full2d(:,:,ifld))
     enddo
 
   end subroutine map_in
 !-----------------------------------------------------------------------
   subroutine map_out(i_ng)
 
-    use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,zpint_ng,glon_ng,glat_ng,zibot,zitop
+    use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,zpint_ng,glon_ng,glat_ng
     use fields_module,only: f4d,nf4d
     use fields_ng_module,only: flds,maxlon,maxlat,domain,itc,nmap,fmap,zlog
     use interp_module,only: interp3d
@@ -271,32 +265,32 @@ module levels_inner_ng_module
     do latend = flds(i_ng-1)%latd1,flds(i_ng-1)%latd0,-1
       if (glat_ng(i_ng-1,latend) < glat_ng(i_ng,nlat_ng(i_ng)+2)) exit
     enddo
-    if (lonbeg>=lonend .or. latbeg>=latend) return
 
-    do itask = 0,ntask-1
-      call bndry_index_ng(domain(i_ng,:,itask),nlon_ng(i_ng),nlat_ng(i_ng),lon0,lon1,lat0,lat1)
-      full(:,lon0:lon1,lat0:lat1,:) = recvbuf(:,1:lon1-lon0+1,1:lat1-lat0+1,:,itask)
-    enddo
+    if (lonbeg<lonend .and. latbeg<latend) then
+      do itask = 0,ntask-1
+        call bndry_index_ng(domain(i_ng,:,itask),nlon_ng(i_ng),nlat_ng(i_ng),lon0,lon1,lat0,lat1)
+        full(:,lon0:lon1,lat0:lat1,:) = recvbuf(:,1:lon1-lon0+1,1:lat1-lat0+1,:,itask)
+      enddo
 
-    n = 1
-    do ifld = 1,nf4d
-      if (ismember(f4d(ifld)%short_name,fmap)) then
-        flds(i_ng-1)%f4d(ifld)%data(:,lonbeg:lonend,latbeg:latend,itc(i_ng-1)) = &
-          interp3d(zpint_ng(i_ng-1,1:nlevp1_ng(i_ng-1)), &
-          glon_ng(i_ng-1,lonbeg:lonend),glat_ng(i_ng-1,latbeg:latend), &
-          zibot,zitop, &
-          glon_ng(i_ng,-1),glon_ng(i_ng,nlon_ng(i_ng)+2), &
-          glat_ng(i_ng,-1),glat_ng(i_ng,nlat_ng(i_ng)+2), &
-          full(:,:,:,n),ismember(f4d(ifld)%short_name,zlog))
-        n = n+1
-      endif
-    enddo
+      n = 1
+      do ifld = 1,nf4d
+        if (ismember(f4d(ifld)%short_name,fmap)) then
+          flds(i_ng-1)%f4d(ifld)%data(:,lonbeg:lonend,latbeg:latend,itc(i_ng-1)) = interp3d( &
+            zpint_ng(i_ng-1,1:nlevp1_ng(i_ng-1)), &
+            glon_ng(i_ng-1,lonbeg:lonend),glat_ng(i_ng-1,latbeg:latend), &
+            zpint_ng(i_ng,1:nlevp1_ng(i_ng)), &
+            glon_ng(i_ng,-1:nlon_ng(i_ng)+2),glat_ng(i_ng,-1:nlat_ng(i_ng)+2), &
+            full(:,:,:,n),ismember(f4d(ifld)%short_name,zlog))
+          n = n+1
+        endif
+      enddo
+    endif
 
   end subroutine map_out
 !-----------------------------------------------------------------------
   subroutine set_bndry(i_ng)
 
-    use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,zpint_ng,glon_ng,glat_ng,zibot,zitop
+    use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,zpint_ng,glon_ng,glat_ng
     use input_module,only: nstep_ng
     use fields_module,only: f4d,nf4d
     use fields_ng_module,only: flds,maxlon,maxlat,domain,itc,nbnd,bndry,zlog
@@ -358,11 +352,8 @@ module levels_inner_ng_module
         endif
 
         do ibnd = 1,nbnd
-          bndx = interp3d(zpint_ng(i_ng,1:nlevp1_ng(i_ng)), &
-            bnd,glat_ng(i_ng,flds(i_ng)%latd0:flds(i_ng)%latd1), &
-            zibot,zitop, &
-            glon_ng(i_ng-1,-1),glon_ng(i_ng-1,nlon_ng(i_ng-1)+2), &
-            glat_ng(i_ng-1,-1),glat_ng(i_ng-1,nlat_ng(i_ng-1)+2), &
+          bndx = interp3d(zpint_ng(i_ng,1:nlevp1_ng(i_ng)),bnd,glat_ng(i_ng,flds(i_ng)%latd0:flds(i_ng)%latd1), &
+            zpint_ng(i_ng-1,1:nlevp1_ng(i_ng-1)),glon_ng(i_ng-1,-1:nlon_ng(i_ng-1)+2),glat_ng(i_ng-1,-1:nlat_ng(i_ng-1)+2), &
             full(:,:,:,ibnd),ismember(bndry(ibnd),zlog))
           flds(i_ng)%lon_b(:,i,:,nstep_ng(i_ng),ibnd) = bndx(:,1,:)
         enddo
@@ -395,11 +386,8 @@ module levels_inner_ng_module
         endif
 
         do ibnd = 1,nbnd
-          bndy = interp3d(zpint_ng(i_ng,1:nlevp1_ng(i_ng)), &
-            glon_ng(i_ng,flds(i_ng)%lond0:flds(i_ng)%lond1),bnd, &
-            zibot,zitop, &
-            glon_ng(i_ng-1,-1),glon_ng(i_ng-1,nlon_ng(i_ng-1)+2), &
-            glat_ng(i_ng-1,-1),glat_ng(i_ng-1,nlat_ng(i_ng-1)+2), &
+          bndy = interp3d(zpint_ng(i_ng,1:nlevp1_ng(i_ng)),glon_ng(i_ng,flds(i_ng)%lond0:flds(i_ng)%lond1),bnd, &
+            zpint_ng(i_ng-1,1:nlevp1_ng(i_ng-1)),glon_ng(i_ng-1,-1:nlon_ng(i_ng-1)+2),glat_ng(i_ng-1,-1:nlat_ng(i_ng-1)+2), &
             full(:,:,:,ibnd),ismember(bndry(ibnd),zlog))
           flds(i_ng)%lat_b(:,:,lat,nstep_ng(i_ng),ibnd) = bndy(:,:,1)
         enddo

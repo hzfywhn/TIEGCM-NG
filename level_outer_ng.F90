@@ -169,7 +169,7 @@ module level_outer_ng_module
 ! essential 2d/3d fields are mapped at every time
 
     use params_module,only: nlevp1,nlon,nlonp1,nlonp2,nlonp4,nlat,nlevp1_ng, &
-      zibot,zitop,glon0,glat,zpint_ng,glon_ng,glat_ng
+      zpint,glon0,glat,zpint_ng,glon_ng,glat_ng
     use input_module,only: nstep_ng
     use pdynamo_module,only: ex,ey,ez
     use lbc,only: t_lbc,u_lbc,v_lbc,z_lbc,flx_he
@@ -181,8 +181,9 @@ module level_outer_ng_module
       mpi_real8,mpi_comm_world,mpi_statuses_ignore
 
     integer :: nx,ny,cnt3d,cnt2d,itask,i0,i1,j0,j1,sidx,ifld
-    real :: x0,x1,mid_lon
+    real :: mid_lon
     integer,dimension(1) :: idx
+    real,dimension(nlonp4) :: glon0_r
     real,dimension(nlevp1,mxlon,mxlat,nf3din) :: sendbuf3d
     real,dimension(nlevp1,mxlon,mxlat,nf3din,0:ntask-1) :: recvbuf3d
     real,dimension(nlevp1,nlonp4,nlat,nf3din) :: full3d,tmp3d
@@ -249,8 +250,7 @@ module level_outer_ng_module
     full2d(1:2,:,7) = efxg(nlon-1:nlon,1:nlat)
     full2d(nlonp2+1:nlonp4,:,7) = efxg(1:2,1:nlat)
 
-    x0 = glon0(1)
-    x1 = glon0(nlonp4)
+    glon0_r = glon0
     nx = nlonp4
 
 ! move global range to cover nested grid range
@@ -259,13 +259,13 @@ module level_outer_ng_module
       if (glon0(1)<=mid_lon+180 .and. mid_lon+180<=glon0(nlonp4)) then
         idx = minloc(abs(glon0-(mid_lon+180)))
         sidx = idx(1)
-        x0 = glon0(sidx)-360
-        x1 = glon0(sidx)
+        glon0_r(1:nlonp2+1-sidx) = glon0(sidx:nlonp2)-360
+        glon0_r(nlonp4-sidx:nlonp1) = glon0(3:sidx)
       else
         idx = minloc(abs(glon0-(mid_lon-180)))
         sidx = idx(1)
-        x0 = glon0(sidx)
-        x1 = glon0(sidx)+360
+        glon0_r(1:nlonp2+1-sidx) = glon0(sidx:nlonp2)
+        glon0_r(nlonp4-sidx:nlonp1) = glon0(3:sidx)+360
       endif
       tmp3d = full3d
       full3d(:,1:nlonp2+1-sidx,:,:) = tmp3d(:,sidx:nlonp2,:,:)
@@ -278,17 +278,15 @@ module level_outer_ng_module
 
 ! interpolate to nested grid subdomain
     do ifld = 1,nf3din
-      flds(1)%f3d_save(:,:,:,nstep_ng(1),ifld) = interp3d(zpint_ng(1,1:nlevp1_ng(1)), &
-        glon_ng(1,flds(1)%lond0:flds(1)%lond1), &
-        glat_ng(1,flds(1)%latd0:flds(1)%latd1), &
-        zibot,zitop,x0,x1,glat(1),glat(nlat),full3d(:,1:nx,:,ifld))
+      flds(1)%f3d_save(:,:,:,nstep_ng(1),ifld) = interp3d( &
+        zpint_ng(1,1:nlevp1_ng(1)),glon_ng(1,flds(1)%lond0:flds(1)%lond1),glat_ng(1,flds(1)%latd0:flds(1)%latd1), &
+        zpint,glon0_r(1:nx),glat,full3d(:,1:nx,:,ifld))
     enddo
 
     do ifld = 1,nf2din
       flds(1)%f2d_save(:,:,nstep_ng(1),ifld) = interp2d( &
-        glon_ng(1,flds(1)%lond0:flds(1)%lond1), &
-        glat_ng(1,flds(1)%latd0:flds(1)%latd1), &
-        x0,x1,glat(1),glat(nlat),full2d(1:nx,:,ifld))
+        glon_ng(1,flds(1)%lond0:flds(1)%lond1),glat_ng(1,flds(1)%latd0:flds(1)%latd1), &
+        glon0_r(1:nx),glat,full2d(1:nx,:,ifld))
     enddo
 
   end subroutine map_in
@@ -296,7 +294,7 @@ module level_outer_ng_module
   subroutine map_out
 
     use params_module,only: nlevp1,nlonp4,nlevp1_ng,nlon_ng,nlat_ng, &
-      zpint,glon0,glat,zibot,zitop,glon_ng,glat_ng
+      zpint,glon0,glat,zpint_ng,glon_ng,glat_ng
     use fields_module,only: f4d,nf4d,itc
     use fields_ng_module,only: flds,maxlon,maxlat,domain,itc_ng=>itc,nmap,fmap,zlog
     use interp_module,only: interp3d
@@ -306,7 +304,6 @@ module level_outer_ng_module
       mpi_real8,mpi_comm_world,mpi_statuses_ignore
 
     integer :: lond0,lond1,latd0,latd1,n,ifld,cnt,itask,latbeg,latend,lonbeg,lonend
-    real :: ng_lb,ng_rb,ng_tb,ng_bb
     real,dimension(nlevp1_ng(1),maxlon(1),maxlat(1),nmap) :: sendbuf
     real,dimension(nlevp1_ng(1),maxlon(1),maxlat(1),nmap,0:ntask-1) :: recvbuf
     real,dimension(nlevp1_ng(1),-1:nlon_ng(1)+2,-1:nlat_ng(1)+2,nmap) :: full
@@ -349,93 +346,89 @@ module level_outer_ng_module
     enddo
 
 ! find global subdomain falling into the nested grid full domain
-    ng_tb = glat_ng(1,-1)
-    ng_bb = glat_ng(1,nlat_ng(1)+2)
     do latbeg = lat0,lat1
-      if (glat(latbeg) > ng_tb) exit
+      if (glat(latbeg) > glat_ng(1,-1)) exit
     enddo
     do latend = lat1,lat0,-1
-      if (glat(latend) < ng_bb) exit
+      if (glat(latend) < glat_ng(1,nlat_ng(1)+2)) exit
     enddo
-    if (latbeg >= latend) return
 
+    if (latbeg < latend) then
 ! note that there are also three longitudinal situations that need to be considered separately
-    ng_lb = glon_ng(1,-1)
-    ng_rb = glon_ng(1,nlon_ng(1)+2)
-
-    if (ng_rb <= glon0(nlonp4)) then
-      do lonbeg = lon0,lon1
-        if (glon0(lonbeg) > ng_lb) exit
-      enddo
-      do lonend = lon1,lon0,-1
-        if (glon0(lonend) < ng_rb) exit
-      enddo
-      if (lonbeg < lonend) then
-        n = 1
-        do ifld = 1,nf4d
-          if (ismember(f4d(ifld)%short_name,fmap)) then
-            f4d(ifld)%data(1:nlevp1-1,lonbeg:lonend,latbeg:latend,itc) = &
-              interp3d(zpint(1:nlevp1-1),glon0(lonbeg:lonend),glat(latbeg:latend), &
-              zibot,zitop,ng_lb,ng_rb,ng_tb,ng_bb, &
-              full(:,:,:,n),ismember(f4d(ifld)%short_name,zlog))
-            n = n+1
-          endif
+      if (glon_ng(1,nlon_ng(2)+2) <= glon0(nlonp4)) then
+        do lonbeg = lon0,lon1
+          if (glon0(lonbeg) > glon_ng(1,-1)) exit
         enddo
-      endif
-    endif
-
-    if (ng_lb >= glon0(nlonp4)) then
-      do lonbeg = lon0,lon1
-        if (glon0(lonbeg) > ng_lb-360) exit
-      enddo
-      do lonend = lon1,lon0,-1
-        if (glon0(lonend) < ng_rb-360) exit
-      enddo
-      if (lonbeg < lonend) then
-        n = 1
-        do ifld = 1,nf4d
-          if (ismember(f4d(ifld)%short_name,fmap)) then
-            f4d(ifld)%data(1:nlevp1-1,lonbeg:lonend,latbeg:latend,itc) = &
-              interp3d(zpint(1:nlevp1-1),glon0(lonbeg:lonend),glat(latbeg:latend), &
-              zibot,zitop,ng_lb-360,ng_rb-360,ng_tb,ng_bb, &
-              full(:,:,:,n),ismember(f4d(ifld)%short_name,zlog))
-            n = n+1
-          endif
+        do lonend = lon1,lon0,-1
+          if (glon0(lonend) < glon_ng(1,nlon_ng(1)+2)) exit
         enddo
-      endif
-    endif
-
-    if (ng_lb<glon0(nlonp4) .and. ng_rb>glon0(nlonp4)) then
-      do lonbeg = lon0,lon1
-        if (glon0(lonbeg) > ng_lb) exit
-      enddo
-      if (lonbeg < lon1) then
-        n = 1
-        do ifld = 1,nf4d
-          if (ismember(f4d(ifld)%short_name,fmap)) then
-            f4d(ifld)%data(1:nlevp1-1,lonbeg:lon1,latbeg:latend,itc) = &
-              interp3d(zpint(1:nlevp1-1),glon0(lonbeg:lon1),glat(latbeg:latend), &
-              zibot,zitop,ng_lb,ng_rb,ng_tb,ng_bb, &
-              full(:,:,:,n),ismember(f4d(ifld)%short_name,zlog))
-            n = n+1
-          endif
-        enddo
+        if (lonbeg < lonend) then
+          n = 1
+          do ifld = 1,nf4d
+            if (ismember(f4d(ifld)%short_name,fmap)) then
+              f4d(ifld)%data(1:nlevp1-1,lonbeg:lonend,latbeg:latend,itc) = &
+                interp3d(zpint(1:nlevp1-1),glon0(lonbeg:lonend),glat(latbeg:latend), &
+                zpint_ng(1,1:nlevp1_ng(1)),glon_ng(1,-1:nlon_ng(1)+2),glat_ng(1,-1:nlat_ng(1)+2), &
+                full(:,:,:,n),ismember(f4d(ifld)%short_name,zlog))
+              n = n+1
+            endif
+          enddo
+        endif
       endif
 
-      do lonend = lon1,lon0,-1
-        if (glon0(lonend) < ng_rb-360) exit
-      enddo
-      if (lon0 < lonend) then
-        n = 1
-        do ifld = 1,nf4d
-          if (ismember(f4d(ifld)%short_name,fmap)) then
-            f4d(ifld)%data(1:nlevp1-1,lon0:lonend,latbeg:latend,itc) = &
-              interp3d(zpint(1:nlevp1-1),glon0(lon0:lonend),glat(latbeg:latend), &
-              zibot,zitop,ng_lb-360,ng_rb-360,ng_tb,ng_bb, &
-              full(:,:,:,n),ismember(f4d(ifld)%short_name,zlog))
-            n = n+1
-          endif
+      if (glon_ng(1,-1) >= glon0(nlonp4)) then
+        do lonbeg = lon0,lon1
+          if (glon0(lonbeg) > glon_ng(1,-1)-360) exit
         enddo
+        do lonend = lon1,lon0,-1
+          if (glon0(lonend) < glon_ng(1,nlon_ng(1)+2)-360) exit
+        enddo
+        if (lonbeg < lonend) then
+          n = 1
+          do ifld = 1,nf4d
+            if (ismember(f4d(ifld)%short_name,fmap)) then
+              f4d(ifld)%data(1:nlevp1-1,lonbeg:lonend,latbeg:latend,itc) = &
+                interp3d(zpint(1:nlevp1-1),glon0(lonbeg:lonend),glat(latbeg:latend), &
+                zpint_ng(1,1:nlevp1_ng(1)),glon_ng(1,-1:nlon_ng(1)+2)-360,glat_ng(1,-1:nlat_ng(1)+2), &
+                full(:,:,:,n),ismember(f4d(ifld)%short_name,zlog))
+              n = n+1
+            endif
+          enddo
+        endif
+      endif
+
+      if (glon_ng(1,-1)<glon0(nlonp4) .and. glon_ng(1,nlon_ng(1)+2)>glon0(nlonp4)) then
+        do lonbeg = lon0,lon1
+          if (glon0(lonbeg) > glon_ng(1,-1)) exit
+        enddo
+        if (lonbeg < lon1) then
+          n = 1
+          do ifld = 1,nf4d
+            if (ismember(f4d(ifld)%short_name,fmap)) then
+              f4d(ifld)%data(1:nlevp1-1,lonbeg:lon1,latbeg:latend,itc) = &
+                interp3d(zpint(1:nlevp1-1),glon0(lonbeg:lon1),glat(latbeg:latend), &
+                zpint_ng(1,1:nlevp1_ng(1)),glon_ng(1,-1:nlon_ng(1)+2),glat_ng(1,-1:nlat_ng(1)+2), &
+                full(:,:,:,n),ismember(f4d(ifld)%short_name,zlog))
+              n = n+1
+            endif
+          enddo
+        endif
+
+        do lonend = lon1,lon0,-1
+          if (glon0(lonend) < glon_ng(1,nlon_ng(1)+2)-360) exit
+        enddo
+        if (lon0 < lonend) then
+          n = 1
+          do ifld = 1,nf4d
+            if (ismember(f4d(ifld)%short_name,fmap)) then
+              f4d(ifld)%data(1:nlevp1-1,lon0:lonend,latbeg:latend,itc) = &
+                interp3d(zpint(1:nlevp1-1),glon0(lon0:lonend),glat(latbeg:latend), &
+                zpint_ng(1,1:nlevp1_ng(1)),glon_ng(1,-1:nlon_ng(1)+2)-360,glat_ng(1,-1:nlat_ng(1)+2), &
+                full(:,:,:,n),ismember(f4d(ifld)%short_name,zlog))
+              n = n+1
+            endif
+          enddo
+        endif
       endif
     endif
 
@@ -444,7 +437,7 @@ module level_outer_ng_module
   subroutine set_bndry
 
     use params_module,only: nlevp1,nlonp1,nlonp2,nlonp4,nlat,nlevp1_ng,nlon_ng,nlat_ng, &
-      zibot,zitop,glon0,glat,zpint_ng,glon_ng,glat_ng
+      zpint,glon0,glat,zpint_ng,glon_ng,glat_ng
     use input_module,only: nstep_ng
     use fields_module,only: f4d,nf4d,itc
     use fields_ng_module,only: flds,nbnd,bndry,ubfill,zlog
@@ -455,9 +448,10 @@ module level_outer_ng_module
       mpi_real8,mpi_comm_world,mpi_statuses_ignore
 
     integer :: n,if4d,cnt,itask,i0,i1,j0,j1,i,lat,ibnd,nx,sidx
-    real :: x0,x1,mid_lon
+    real :: mid_lon
     integer,dimension(1) :: idx
     real,dimension(1) :: bnd
+    real,dimension(nlonp4) :: glon0_r
     real,dimension(nlevp1,mxlon,mxlat,nbnd) :: sendbuf
     real,dimension(nlevp1,mxlon,mxlat,nbnd,0:ntask-1) :: recvbuf
     real,dimension(nlevp1,nlonp4,nlat,nbnd) :: full,tmp
@@ -523,10 +517,8 @@ module level_outer_ng_module
 
 ! interpolate to nested grid boundaries
         do ibnd = 1,nbnd
-          bndx = interp3d(zpint_ng(1,1:nlevp1_ng(1)), &
-            bnd,glat_ng(1,flds(1)%latd0:flds(1)%latd1), &
-            zibot,zitop,glon0(1),glon0(nlonp4),glat(1),glat(nlat), &
-            full(:,:,:,ibnd),ismember(bndry(ibnd),zlog))
+          bndx = interp3d(zpint_ng(1,1:nlevp1_ng(1)),bnd,glat_ng(1,flds(1)%latd0:flds(1)%latd1), &
+            zpint,glon0,glat,full(:,:,:,ibnd),ismember(bndry(ibnd),zlog))
           flds(1)%lon_b(:,i,:,nstep_ng(1),ibnd) = bndx(:,1,:)
         enddo
       endif
@@ -561,8 +553,7 @@ module level_outer_ng_module
           bnd(1) = glat_ng(1,nlat_ng(1)+2)
         endif
 
-        x0 = glon0(1)
-        x1 = glon0(nlonp4)
+        glon0_r = glon0
         nx = nlonp4
 
         if (.not. (glon0(1)<=glon_ng(1,flds(1)%lond0) .and. glon_ng(1,flds(1)%lond1)<=glon0(nlonp4))) then
@@ -570,13 +561,13 @@ module level_outer_ng_module
           if (glon0(1)<=mid_lon+180 .and. mid_lon+180<=glon0(nlonp4)) then
             idx = minloc(abs(glon0-(mid_lon+180)))
             sidx = idx(1)
-            x0 = glon0(sidx)-360
-            x1 = glon0(sidx)
+            glon0_r(1:nlonp2+1-sidx) = glon0(sidx:nlonp2)-360
+            glon0_r(nlonp4-sidx:nlonp1) = glon0(3:sidx)
           else
             idx = minloc(abs(glon0-(mid_lon-180)))
             sidx = idx(1)
-            x0 = glon0(sidx)
-            x1 = glon0(sidx)+360
+            glon0_r(1:nlonp2+1-sidx) = glon0(sidx:nlonp2)
+            glon0_r(nlonp4-sidx:nlonp1) = glon0(3:sidx)+360
           endif
           tmp = full
           full(:,1:nlonp2+1-sidx,:,:) = tmp(:,sidx:nlonp2,:,:)
@@ -585,10 +576,8 @@ module level_outer_ng_module
         endif
 
         do ibnd = 1,nbnd
-          bndy = interp3d(zpint_ng(1,1:nlevp1_ng(1)), &
-            glon_ng(1,flds(1)%lond0:flds(1)%lond1),bnd, &
-            zibot,zitop,x0,x1,glat(1),glat(nlat), &
-            full(:,1:nx,:,ibnd),ismember(bndry(ibnd),zlog))
+          bndy = interp3d(zpint_ng(1,1:nlevp1_ng(1)),glon_ng(1,flds(1)%lond0:flds(1)%lond1),bnd, &
+            zpint,glon0_r(1:nx),glat,full(:,1:nx,:,ibnd),ismember(bndry(ibnd),zlog))
           flds(1)%lat_b(:,:,lat,nstep_ng(1),ibnd) = bndy(:,:,1)
         enddo
       endif

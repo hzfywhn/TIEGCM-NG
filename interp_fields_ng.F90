@@ -27,12 +27,12 @@ subroutine interp_fields_ng(i_ng)
       do ifld = 1,nf3din
         do k = 1,nlevp1_ng(i_ng)
           fsave = (/flds(i_ng)%f3d_save(k,i,lat,0,ifld),flds(i_ng)%f3d_save(k,i,lat,t1,ifld)/)
-          flds(i_ng)%f3d_save(k,i,lat,1:t1-1,ifld) = interp1d(t,0.,real(t1),fsave)
+          flds(i_ng)%f3d_save(k,i,lat,1:t1-1,ifld) = interp1d(t,(/0.,real(t1)/),fsave)
         enddo
       enddo
       do ifld = 1,nf2din
         fsave = (/flds(i_ng)%f2d_save(i,lat,0,ifld),flds(i_ng)%f2d_save(i,lat,t1,ifld)/)
-        flds(i_ng)%f2d_save(i,lat,1:t1-1,ifld) = interp1d(t,0.,real(t1),fsave)
+        flds(i_ng)%f2d_save(i,lat,1:t1-1,ifld) = interp1d(t,(/0.,real(t1)/),fsave)
       enddo
     enddo
   enddo
@@ -43,9 +43,9 @@ subroutine interp_fields_ng(i_ng)
         if (flds(i_ng)%is_bndry(i)) then
           do lat = flds(i_ng)%latd0,flds(i_ng)%latd1
             fsave = (/flds(i_ng)%lon_b(k,i,lat,0,ifld),flds(i_ng)%lon_b(k,i,lat,t1,ifld)/)
-            flds(i_ng)%lon_b(k,i,lat,1:t1-1,ifld) = interp1d(t,0.,real(t1),fsave)
+            flds(i_ng)%lon_b(k,i,lat,1:t1-1,ifld) = interp1d(t,(/0.,real(t1)/),fsave)
             if (trim(bndry(ifld)) == 'OP') &
-              flds(i_ng)%op_lon_b(k,i,lat,:) = interp1d(t_sub,0.,real(t1_sub),fsave)
+              flds(i_ng)%op_lon_b(k,i,lat,:) = interp1d(t_sub,(/0.,real(t1_sub)/),fsave)
           enddo
         endif
       enddo
@@ -54,9 +54,9 @@ subroutine interp_fields_ng(i_ng)
         if (flds(i_ng)%is_bndry(lat)) then
           do i = flds(i_ng)%lond0,flds(i_ng)%lond1
             fsave = (/flds(i_ng)%lat_b(k,i,lat,0,ifld),flds(i_ng)%lat_b(k,i,lat,t1,ifld)/)
-            flds(i_ng)%lat_b(k,i,lat,1:t1-1,ifld) = interp1d(t,0.,real(t1),fsave)
+            flds(i_ng)%lat_b(k,i,lat,1:t1-1,ifld) = interp1d(t,(/0.,real(t1)/),fsave)
             if (trim(bndry(ifld)) == 'OP') &
-              flds(i_ng)%op_lat_b(k,i,lat,:) = interp1d(t_sub,0.,real(t1_sub),fsave)
+              flds(i_ng)%op_lat_b(k,i,lat,:) = interp1d(t_sub,(/0.,real(t1_sub)/),fsave)
           enddo
         endif
       enddo

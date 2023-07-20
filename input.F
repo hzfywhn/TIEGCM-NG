@@ -88,7 +88,9 @@
      |  ntimes_ctpoten,ntimes_power,ntimes_bximf,ntimes_byimf,
      |  ntimes_bzimf,ntimes_swden,ntimes_swvel,ntimes_al,ntimes_kp,
      |  ntimes_f107,ntimes_f107a
-      logical :: aluse   ! logical to use AL in Weimer 2001 model or not
+      logical :: aluse,  ! logical to use AL in Weimer 2001 model or not
+     |  et,              ! logical to calculate electron turbulent heating
+     |  saps             ! logical to include empirical SAPS
 !
 ! Parameters as read from namelist:
       real :: rd_power,rd_ctpoten,rd_f107,rd_f107a,rd_bximf,rd_byimf,
@@ -126,7 +128,10 @@
      |  tidi_ncfile,        ! TIDI data (U,V)
      |  ctmt_ncfile,        ! CTMT tidal data (T,U,V,Z)
      |  bgrddata_ncfile,    ! background data (T,U,V,Z; V=0)
-     |  he_coefs_ncfile     ! coefficients of Helium flux at upper boundary
+     |  he_coefs_ncfile,    ! coefficients of Helium flux at upper boundary
+     |  vedata,             ! SAPS ve data file
+     |  vndata,             ! SAPS vn data file
+     |  vvdata              ! SAPS vv data file
 
 !     integer,parameter :: ngpivars = 4
 !     real :: gpi_vars(ngpivars) ! f107,f107a,power,ctpoten
@@ -189,7 +194,8 @@
      |  imf_ncfile,saber_ncfile,tidi_ncfile,sech_nbyte,f107_time,
      |  f107a_time,hpss_path,current_pg,current_kq,calc_helium,
      |  enforce_opfloor,bgrddata_ncfile,ctmt_ncfile,opdiffcap,
-     |  amienh,amiesh,amie_ibkg,he_coefs_ncfile,
+     |  amienh,amiesh,amie_ibkg,he_coefs_ncfile,et,saps,
+     |  vedata,vndata,vvdata,
      |  nesting,nstep_ng,dlev_ng,glat0_ng,glat1_ng,dlat_ng,
      |  glon0_ng,glon1_ng,dlon_ng,fileout_ng,varout_ng,
      |  nudge_ncpre,nudge_ncfile,nudge_ncpost,nudge_flds,
@@ -274,6 +280,9 @@
       bgrddata_ncfile = ' '   ! Background data file
       ctmt_ncfile = ' '       ! CTMT data file for lbc tides 
       he_coefs_ncfile = ' '   ! Helium coefficients
+      vedata = ' '
+      vndata = ' '
+      vvdata = ' '
 !
       start_day  = ispval
       start_year = ispval
@@ -298,6 +307,8 @@
       calc_helium = ispval
       enforce_opfloor = ispval
       opdiffcap = spval
+      et = .false.
+      saps = .false.
 
       f107    = spval
       f107a   = spval
@@ -640,6 +651,11 @@
         endif
       endif
       call expand_path(he_coefs_ncfile)
+!
+! SAPS data files:
+      if (len_trim(vedata) > 0) call expand_path(vedata)
+      if (len_trim(vndata) > 0) call expand_path(vndata)
+      if (len_trim(vvdata) > 0) call expand_path(vvdata)
 !
 ! If enforce_opfloor > 0, then enforce O+ floor (see oplus.F)
 !
@@ -2223,6 +2239,16 @@
         endif
       endif
 !
+! KP/GPI_NCFILE and VEDATA/VNDATA/VVDATA must set if SAPS is turned on
+      if (saps) then
+        if (kp==spval .and. all(kp_time==spval) .and.
+     |    len_trim(gpi_ncfile)==0)
+     |    call shutdown('KP/GPI_NCFILE must set if SAPS is TRUE')
+        if (len_trim(vedata)==0 .or. len_trim(vndata)==0 .or.
+     |    len_trim(vvdata)==0)
+     |    call shutdown('VEDATA/VNDATA/VVDATA must set if SAPS is TRUE')
+      endif
+!
 ! Report to stdout for debug: 
 !     write(6,"(/,'inp_solar returning:')")
 !     write(6,"('potential_model=',a)") trim(potential_model)
@@ -2243,8 +2269,11 @@
 ! Validate lower boundary options:
 !
       use params_module,only: n_ng
+      use char_module,only: ismember
       implicit none
-      integer :: igswm, isaber, itidi, ihough, ictmt, i_ng
+      integer :: igswm, isaber, itidi, ihough, ictmt, i_ng, if4d, n
+      character(len=*),dimension(*),parameter :: mandatory =
+     |  (/'TN','O2','O1','Z ','ZG'/)
       external :: shutdown
 !
       igswm = 0
@@ -2311,6 +2340,8 @@
 ! check for the compliance of nesting parameters
       if (nesting) then
         n_ng = count(nstep_ng/=ispval)
+        if (n_ng > mx_ng)
+     |    call shutdown('nesting level exceeds upper limit')
         if (count(dlev_ng/=spval)/=n_ng .or.
      |    count(glat0_ng/=spval)/=n_ng .or.
      |    count(glat1_ng/=spval)/=n_ng .or.
@@ -2332,6 +2363,13 @@
      |      call shutdown('GLON1_NG,GLAT1_NG'//
      |      ' must be strictly decreasing')
         enddo
+        n = count(len_trim(varout_ng)>0)
+        do if4d = 1,size(mandatory)
+          if (.not. ismember(mandatory(if4d),varout_ng)) then
+            n = n+1
+            varout_ng(n) = trim(mandatory(if4d))
+          endif
+        enddo
 
 ! check for the compliance of nudging parameters
         if (count(len_trim(nudge_ncfile)>0) > 0) then
@@ -2341,9 +2379,6 @@
             nudge_flds(3) = 'VN'
             nudge_flds(4) = 'Z'
           endif
-          if (count(nudge_level) /= n_ng+1)
-     |      call shutdown('NUDGE_LEVEL must be '//
-     |      'the number of nesting levels + 1')
           if (nudge_refdate(1) == ispval) nudge_refdate(1) = start_year
           if (nudge_refdate(2) == ispval) nudge_refdate(2) = start_day
           if (any(nudge_sponge < 0))

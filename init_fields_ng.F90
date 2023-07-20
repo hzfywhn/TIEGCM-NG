@@ -4,7 +4,7 @@ subroutine init_fields_ng
 ! this subroutine is called once per model run
 
   use params_module,only: n_ng,nlevp1,nlon,nlonp1,nlonp2,nlonp4,nlat, &
-    nlevp1_ng,nlon_ng,nlat_ng,zibot,zitop,glon0,glat,zpint_ng,glon_ng,glat_ng
+    nlevp1_ng,nlon_ng,nlat_ng,zpint,glon0,glat,zpint_ng,glon_ng,glat_ng
   use fields_module,only: f4d,nf4d,itp
   use pdynamo_module,only: ex,ey,ez
   use lbc,only: t_lbc,u_lbc,v_lbc,z_lbc,flx_he
@@ -17,9 +17,10 @@ subroutine init_fields_ng
   implicit none
 
   integer :: nx,ny,ifld,cnt4d,cnt3d,cnt2d,itask,i0,i1,j0,j1,sidx,i_ng,i,lat,n
-  real :: x0,x1,mid_lon
+  real :: mid_lon
   integer,dimension(1) :: idx
   real,dimension(1) :: bnd
+  real,dimension(nlonp4) :: glon0_r
   real,dimension(nlevp1,mxlon,mxlat,nf4d) :: sendbuf4d
   real,dimension(nlevp1,mxlon,mxlat,nf4d,0:ntask-1) :: recvbuf4d
   real,dimension(nlevp1,nlonp4,nlat,nf4d) :: full4d,tmp4d
@@ -90,8 +91,7 @@ subroutine init_fields_ng
   full2d(1:2,:,7) = efxg(nlon-1:nlon,1:nlat)
   full2d(nlonp2+1:nlonp4,:,7) = efxg(1:2,1:nlat)
 
-  x0 = glon0(1)
-  x1 = glon0(nlonp4)
+  glon0_r = glon0
   nx = nlonp4
 
 ! move global range to cover nested grid range
@@ -100,13 +100,13 @@ subroutine init_fields_ng
     if (glon0(1)<=mid_lon+180 .and. mid_lon+180<=glon0(nlonp4)) then
       idx = minloc(abs(glon0-(mid_lon+180)))
       sidx = idx(1)
-      x0 = glon0(sidx)-360
-      x1 = glon0(sidx)
+      glon0_r(1:nlonp2+1-sidx) = glon0(sidx:nlonp2)-360
+      glon0_r(nlonp4-sidx:nlonp1) = glon0(3:sidx)
     else
       idx = minloc(abs(glon0-(mid_lon-180)))
       sidx = idx(1)
-      x0 = glon0(sidx)
-      x1 = glon0(sidx)+360
+      glon0_r(1:nlonp2+1-sidx) = glon0(sidx:nlonp2)
+      glon0_r(nlonp4-sidx:nlonp1) = glon0(3:sidx)+360
     endif
     tmp4d = full4d
     full4d(:,1:nlonp2+1-sidx,:,:) = tmp4d(:,sidx:nlonp2,:,:)
@@ -130,25 +130,20 @@ subroutine init_fields_ng
 ! initialize 4d/3d/2d fields
     do ifld = 1,nf4d
       flds(i_ng)%f4d(ifld)%data(:,:,:,itp_ng(i_ng)) = &
-        interp3d(zpint_ng(i_ng,1:nlevp1_ng(i_ng)), &
-        glon_ng(i_ng,i0:i1),glat_ng(i_ng,j0:j1), &
-        zibot,zitop,x0,x1,glat(1),glat(nlat), &
-        full4d(:,1:nx,:,ifld),ismember(f4d(ifld)%short_name,zlog))
-      flds(i_ng)%f4d(ifld)%data(:,:,:,itc_ng(i_ng)) = &
-        flds(i_ng)%f4d(ifld)%data(:,:,:,itp_ng(i_ng))
+        interp3d(zpint_ng(i_ng,1:nlevp1_ng(i_ng)),glon_ng(i_ng,i0:i1),glat_ng(i_ng,j0:j1), &
+        zpint,glon0_r(1:nx),glat,full4d(:,1:nx,:,ifld),ismember(f4d(ifld)%short_name,zlog))
+      flds(i_ng)%f4d(ifld)%data(:,:,:,itc_ng(i_ng)) = flds(i_ng)%f4d(ifld)%data(:,:,:,itp_ng(i_ng))
     enddo
 
     do ifld = 1,nf3din
       flds(i_ng)%f3d_save(:,:,:,0,ifld) = &
-        interp3d(zpint_ng(i_ng,1:nlevp1_ng(i_ng)), &
-        glon_ng(i_ng,i0:i1),glat_ng(i_ng,j0:j1), &
-        zibot,zitop,x0,x1,glat(1),glat(nlat),full3d(:,1:nx,:,ifld))
+        interp3d(zpint_ng(i_ng,1:nlevp1_ng(i_ng)),glon_ng(i_ng,i0:i1),glat_ng(i_ng,j0:j1), &
+        zpint,glon0_r(1:nx),glat,full3d(:,1:nx,:,ifld))
     enddo
 
     do ifld = 1,nf2din
-      flds(i_ng)%f2d_save(:,:,0,ifld) = interp2d( &
-        glon_ng(i_ng,i0:i1),glat_ng(i_ng,j0:j1), &
-        x0,x1,glat(1),glat(nlat),full2d(1:nx,:,ifld))
+      flds(i_ng)%f2d_save(:,:,0,ifld) = &
+        interp2d(glon_ng(i_ng,i0:i1),glat_ng(i_ng,j0:j1),glon0_r(1:nx),glat,full2d(1:nx,:,ifld))
     enddo
 
 ! initialize lateral boundaries
@@ -162,10 +157,9 @@ subroutine init_fields_ng
         n = 1
         do ifld = 1,nf4d
           if (ismember(f4d(ifld)%short_name,bndry)) then
-            bndx(1:nlevp1_ng(i_ng),:,j0:j1) = interp3d( &
-              zpint_ng(i_ng,1:nlevp1_ng(i_ng)),bnd,glat_ng(i_ng,j0:j1), &
-              zibot,zitop,x0,x1,glat(1),glat(nlat), &
-              full4d(:,1:nx,:,ifld),ismember(f4d(ifld)%short_name,zlog))
+            bndx(1:nlevp1_ng(i_ng),:,j0:j1) = &
+              interp3d(zpint_ng(i_ng,1:nlevp1_ng(i_ng)),bnd,glat_ng(i_ng,j0:j1), &
+              zpint,glon0_r(1:nx),glat,full4d(:,1:nx,:,ifld),ismember(f4d(ifld)%short_name,zlog))
             flds(i_ng)%lon_b(:,i,:,0,n) = bndx(1:nlevp1_ng(i_ng),1,j0:j1)
             n = n+1
           endif
@@ -184,10 +178,9 @@ subroutine init_fields_ng
         n = 1
         do ifld = 1,nf4d
           if (ismember(f4d(ifld)%short_name,bndry)) then
-            bndy(1:nlevp1_ng(i_ng),i0:i1,:) = interp3d( &
-              zpint_ng(i_ng,1:nlevp1_ng(i_ng)),glon_ng(i_ng,i0:i1),bnd, &
-              zibot,zitop,x0,x1,glat(1),glat(nlat), &
-              full4d(:,1:nx,:,ifld),ismember(f4d(ifld)%short_name,zlog))
+            bndy(1:nlevp1_ng(i_ng),i0:i1,:) = &
+              interp3d(zpint_ng(i_ng,1:nlevp1_ng(i_ng)),glon_ng(i_ng,i0:i1),bnd, &
+              zpint,glon0_r(1:nx),glat,full4d(:,1:nx,:,ifld),ismember(f4d(ifld)%short_name,zlog))
             flds(i_ng)%lat_b(:,:,lat,0,n) = bndy(1:nlevp1_ng(i_ng),i0:i1,1)
             n = n+1
           endif

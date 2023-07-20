@@ -1,6 +1,6 @@
 subroutine newton_ng(cool_implicit,cool_explicit,i_ng)
 
-  use params_module,only: nlevp1_ng,zpint_ng,zibot,zitop
+  use params_module,only: nlevp1_ng,zpint_ng,zibot
   use cons_module,only: rmass_co2,p0,boltz,avo,rmassinv_o2,rmassinv_o1,rmassinv_n2,rmassinv_no
   use init_module,only: iday,iyear,secs
   use fields_ng_module,only: flds,itp,dz,expzmid_inv,expz
@@ -17,13 +17,10 @@ subroutine newton_ng(cool_implicit,cool_explicit,i_ng)
   real,dimension(nlevp1_ng(i_ng)) :: xfac,xfaci
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     tn,o2,o1,n2,no,barm,xnmbarm,cp,xmco2,nco2,aco2,bco2,ano,co2_cool,no_cool,fac1,fac2,cpi,fac1_a
-  real,dimension(29),parameter :: &
+  real,dimension(29),parameter :: zpint_5 = (/(zibot+(k-1)*0.5, k=1,29)/), &
     xfac_5 = (/0.1000E-01, 0.1000E-01, 0.1000E-01, 0.5000E-01, 0.1000E+00, &
       0.2000E+00, 0.4000E+00, 0.5500E+00, 0.7000E+00, 0.7500E+00, &
-      0.8000E+00, 0.8000E+00, 0.8000E+00, 0.8000E+00, 0.8000E+00, &
-      0.8000E+00, 0.8000E+00, 0.8000E+00, 0.8000E+00, 0.8000E+00, &
-      0.8000E+00, 0.8000E+00, 0.8000E+00, 0.8000E+00, 0.8000E+00, &
-      0.8000E+00, 0.8000E+00, 0.8000E+00, 0.8000E+00/)
+      (0.8000E+00, k=1,19)/)
 
   tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
   o2 = flds(i_ng)%o2(:,:,:,itp(i_ng))
@@ -88,7 +85,7 @@ subroutine newton_ng(cool_implicit,cool_explicit,i_ng)
   no_cool(nk,:,:) = no_cool(nk-1,:,:)
 
 ! newto3p
-  xfac = interp1d(zpint_ng(i_ng,1:nk),zibot,zitop,xfac_5)
+  xfac = interp1d(zpint_ng(i_ng,1:nk),zpint_5,xfac_5)
 
   do k = 1,nk-1
     xfaci(k) = .5*(xfac(k)+xfac(k+1))

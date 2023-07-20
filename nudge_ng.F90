@@ -10,11 +10,10 @@ module nudge_ng_module
 
   logical :: wrap ! whether the external field has a full longitude cycle
   integer :: nlon, nlat, nlev, ntime, nfile, nf4d, ifile, itime, ncid
-  real :: y0, y1, z0, z1
   integer, dimension(nlb) :: lb_idx
   logical, dimension(:), allocatable :: no_fill
   integer, dimension(:), allocatable :: time, nt, t0, t1, f4d_idx, varid
-  real, dimension(:), allocatable :: lon, fill_value
+  real, dimension(:), allocatable :: lon, lat, lev, fill_value
 ! note that lb_idx and f4d_idx are referenced upon different fields
 ! lb_idx is the index of lb fields in the external fields
 ! f4d_idx is the index of external fields in the model fields
@@ -48,7 +47,6 @@ module nudge_ng_module
     real :: dlon
     real(kind=4) :: fillvalue
     integer, dimension(mxhvols, maxnt) :: t, dt, dts
-    real, dimension(1) :: tmp
     logical, external :: isclose
     integer, external :: to_doy, to_datenum
     external :: shutdown
@@ -73,18 +71,18 @@ module nudge_ng_module
     stat = nf90_inq_dimid(ncid, 'lat', dimid_lat)
     stat = nf90_inquire_dimension(ncid, dimid_lat, len=nlat)
     stat = nf90_inq_varid(ncid, 'lat', varid_lat)
-    stat = nf90_get_var(ncid, varid_lat, tmp, count=(/1/))
-    y0 = tmp(1)
-    stat = nf90_get_var(ncid, varid_lat, tmp, start=(/nlat/), count=(/1/))
-    y1 = tmp(1)
+    allocate(lat(nlat))
+    stat = nf90_get_var(ncid, varid_lat, lat)
 
     stat = nf90_inq_dimid(ncid, 'lev', dimid_lev)
     stat = nf90_inquire_dimension(ncid, dimid_lev, len=nlev)
     stat = nf90_inq_varid(ncid, 'lev', varid_lev)
-    stat = nf90_get_var(ncid, varid_lev, tmp, count=(/1/))
-    z0 = tmp(1)
-    stat = nf90_get_var(ncid, varid_lev, tmp, start=(/nlev/), count=(/1/))
-    z1 = tmp(1)
+    allocate(lev(nlev))
+    stat = nf90_get_var(ncid, varid_lev, lev)
+
+    if (lev(1)>zibot .or. lev(nlev)<zibot) call shutdown('nudge_ncfile dimension lev must include model lbc')
+    if (nudge_sponge(1)*2>=max(lon(nlon)-lon(1), lat(nlat)-lat(1)) .or. nudge_sponge(2)>lev(nlev)-lev(1)) &
+      call shutdown('nudge_sponge cannot exceed nudge_ncfile dimension range')
 
     nf4d = count(len_trim(nudge_flds) > 0)
     allocate(f4d_idx(nf4d))
@@ -105,10 +103,6 @@ module nudge_ng_module
     enddo
 
     stat = nf90_close(ncid)
-
-    if (z0>zibot .or. z1<zibot) call shutdown('nudge_ncfile dimension lev must include model lbc')
-    if (nudge_sponge(1)*2>=max(lon(nlon)-lon(1), y1-y0) .or. nudge_sponge(2)>z1-z0) &
-      call shutdown('nudge_sponge cannot exceed nudge_ncfile dimension range')
 
 ! if there are multiple external data files, the model will read the correct data file based on time
     nfile = count(len_trim(nudge_ncfile) > 0)
@@ -181,58 +175,23 @@ module nudge_ng_module
     use netcdf, only: nf90_open, nf90_inq_varid, nf90_nowrite
 
     logical :: intersect
-    integer :: stat, if4d, i_ng, nk, k, j0, j1, lat, i0, i1, i, shift, ls, rs
+    integer :: stat, if4d, i_ng, nk, k, j0, j1, j, i0, i1, i, shift, ls, rs
     real :: lb, rb, tb, bb, slon, latpart1, latpart2, lonpart
     integer, dimension(1) :: idx
     real, dimension(max(nlevp1, maxval(nlevp1_ng))) :: zpm, zpi, zout
-    type(mpi_request), dimension(3) :: request
-    logical, dimension(:), allocatable :: buffer_l
-    integer, dimension(:), allocatable :: buffer_i
-    real, dimension(:), allocatable :: buffer_r
+    type(mpi_request), dimension(12) :: request
     real, dimension(min(lat0, minval(ng_flds%latd0)): max(lat1, maxval(ng_flds%latd1))) :: model_lat, yc
     real, dimension(min(lon0, minval(ng_flds%lond0)): max(lon1, maxval(ng_flds%lond1))) :: model_lon, xc
     real, dimension(min(lon0, minval(ng_flds%lond0)): max(lon1, maxval(ng_flds%lond1)), &
       min(lat0, minval(ng_flds%latd0)): max(lat1, maxval(ng_flds%latd1))) :: dist
 
-    allocate(buffer_i(4))
-
-    if (mytid == 0) buffer_i = (/nlon, ntime, nfile, nf4d/)
-
-    call mpi_bcast(buffer_i, 4, mpi_integer, 0, mpi_comm_world)
-
-    if (mytid /= 0) then
-      nlon = buffer_i(1)
-      ntime = buffer_i(2)
-      nfile = buffer_i(3)
-      nf4d = buffer_i(4)
-    endif
-
-    deallocate(buffer_i)
-    allocate(buffer_l(nf4d+1))
-    allocate(buffer_i(nlb+ntime+nfile*3+nf4d+2))
-    allocate(buffer_r(nlon+nf4d+4))
-
-    if (mytid == 0) then
-      buffer_l(1: nf4d) = no_fill
-      buffer_l(nf4d+1) = wrap
-
-      buffer_i(1: nlb) = lb_idx
-      buffer_i(nlb+1: nlb+ntime) = time
-      buffer_i(nlb+ntime+1: nlb+ntime+nfile) = nt
-      buffer_i(nlb+ntime+nfile+1: nlb+ntime+nfile*2) = t0
-      buffer_i(nlb+ntime+nfile*2+1: nlb+ntime+nfile*3) = t1
-      buffer_i(nlb+ntime+nfile*3+1: nlb+ntime+nfile*3+nf4d) = f4d_idx
-      buffer_i(nlb+ntime+nfile*3+nf4d+1: nlb+ntime+nfile*3+nf4d+2) = (/nlat, nlev/)
-
-      buffer_r(1: nlon) = lon
-      buffer_r(nlon+1: nlon+nf4d) = fill_value
-      buffer_r(nlon+nf4d+1: nlon+nf4d+4) = (/y0, y1, z0, z1/)
-    endif
-
-    call mpi_ibcast(buffer_l, nf4d+1, mpi_logical, 0, mpi_comm_world, request(1))
-    call mpi_ibcast(buffer_i, nlb+ntime+nfile*3+nf4d+2, mpi_integer, 0, mpi_comm_world, request(2))
-    call mpi_ibcast(buffer_r, nlon+nf4d+4, mpi_real8, 0, mpi_comm_world, request(3))
-    call mpi_waitall(3, request, mpi_statuses_ignore)
+    call mpi_ibcast(nlon, 1, mpi_integer, 0, mpi_comm_world, request(1))
+    call mpi_ibcast(nlat, 1, mpi_integer, 0, mpi_comm_world, request(2))
+    call mpi_ibcast(nlev, 1, mpi_integer, 0, mpi_comm_world, request(3))
+    call mpi_ibcast(ntime, 1, mpi_integer, 0, mpi_comm_world, request(4))
+    call mpi_ibcast(nfile, 1, mpi_integer, 0, mpi_comm_world, request(5))
+    call mpi_ibcast(nf4d, 1, mpi_integer, 0, mpi_comm_world, request(6))
+    call mpi_waitall(6, request(1: 6), mpi_statuses_ignore)
 
     if (mytid /= 0) then
       allocate(no_fill(nf4d))
@@ -242,34 +201,31 @@ module nudge_ng_module
       allocate(t1(nfile))
       allocate(f4d_idx(nf4d))
       allocate(lon(nlon))
+      allocate(lat(nlat))
+      allocate(lev(nlev))
       allocate(fill_value(nf4d))
       allocate(varid(nf4d))
-
-      no_fill = buffer_l(1: nf4d)
-      wrap = buffer_l(nf4d+1)
-
-      lb_idx = buffer_i(1: nlb)
-      time = buffer_i(nlb+1: nlb+ntime)
-      nt = buffer_i(nlb+ntime+1: nlb+ntime+nfile)
-      t0 = buffer_i(nlb+ntime+nfile+1: nlb+ntime+nfile*2)
-      t1 = buffer_i(nlb+ntime+nfile*2+1: nlb+ntime+nfile*3)
-      f4d_idx = buffer_i(nlb+ntime+nfile*3+1: nlb+ntime+nfile*3+nf4d)
-      nlat = buffer_i(nlb+ntime+nfile*3+nf4d+1)
-      nlev = buffer_i(nlb+ntime+nfile*3+nf4d+2)
-
-      lon = buffer_r(1: nlon)
-      fill_value = buffer_r(nlon+1: nlon+nf4d)
-      y0 = buffer_r(nlon+nf4d+1)
-      y1 = buffer_r(nlon+nf4d+2)
-      z0 = buffer_r(nlon+nf4d+3)
-      z1 = buffer_r(nlon+nf4d+4)
     endif
+
+    call mpi_ibcast(wrap, 1, mpi_logical, 0, mpi_comm_world, request(1))
+    call mpi_ibcast(no_fill, nf4d, mpi_logical, 0, mpi_comm_world, request(2))
+    call mpi_ibcast(lb_idx, nlb, mpi_integer, 0, mpi_comm_world, request(3))
+    call mpi_ibcast(time, ntime, mpi_integer, 0, mpi_comm_world, request(4))
+    call mpi_ibcast(nt, nfile, mpi_integer, 0, mpi_comm_world, request(5))
+    call mpi_ibcast(t0, nfile, mpi_integer, 0, mpi_comm_world, request(6))
+    call mpi_ibcast(t1, nfile, mpi_integer, 0, mpi_comm_world, request(7))
+    call mpi_ibcast(f4d_idx, nf4d, mpi_integer, 0, mpi_comm_world, request(8))
+    call mpi_ibcast(lon, nlon, mpi_real8, 0, mpi_comm_world, request(9))
+    call mpi_ibcast(lat, nlat, mpi_real8, 0, mpi_comm_world, request(10))
+    call mpi_ibcast(lev, nlev, mpi_real8, 0, mpi_comm_world, request(11))
+    call mpi_ibcast(fill_value, nf4d, mpi_real8, 0, mpi_comm_world, request(12))
+    call mpi_waitall(12, request, mpi_statuses_ignore)
 
 ! a sponge layer is imposed to allow smooth transition
     lb = lon(1) + nudge_sponge(1)
     rb = lon(nlon) - nudge_sponge(1)
-    tb = y0 + nudge_sponge(1)
-    bb = y1 - nudge_sponge(1)
+    tb = lat(1) + nudge_sponge(1)
+    bb = lat(nlat) - nudge_sponge(1)
 
     flds%lonbeg = ispval
     flds%lonend = ispval
@@ -316,15 +272,15 @@ module nudge_ng_module
         flds(i_ng)%vert_weight(:, if4d) = exp(-((zout(1: flds(i_ng)%maxlev) - zibot) / nudge_delta(2))**nudge_power(2))
       enddo
 
-      do lat = j0, j1
-        if (model_lat(lat) >= y0) exit
+      do j = j0, j1
+        if (model_lat(j) >= lat(1)) exit
       enddo
-      flds(i_ng)%latbeg = lat
+      flds(i_ng)%latbeg = j
 
-      do lat = j1, j0, -1
-        if (model_lat(lat) <= y1) exit
+      do j = j1, j0, -1
+        if (model_lat(j) <= lat(nlat)) exit
       enddo
-      flds(i_ng)%latend = lat
+      flds(i_ng)%latend = j
 
       if (wrap) then
 ! if the external field covers the full longitude cycle, then the model subdomain is fully embedded
@@ -402,10 +358,10 @@ module nudge_ng_module
         allocate(flds(i_ng)%lbc(i0: i1, flds(i_ng)%latbeg: flds(i_ng)%latend, 2, nlb))
         allocate(flds(i_ng)%f4d(flds(i_ng)%maxlev, i0: i1, flds(i_ng)%latbeg: flds(i_ng)%latend, 2, nf4d))
 
-        do lat = flds(i_ng)%latbeg, flds(i_ng)%latend
-          if (model_lat(lat) < tb) yc(lat) = tb
-          if (tb<=model_lat(lat) .and. model_lat(lat)<=bb) yc(lat) = model_lat(lat)
-          if (model_lat(lat) > bb) yc(lat) = bb
+        do j = flds(i_ng)%latbeg, flds(i_ng)%latend
+          if (model_lat(j) < tb) yc(j) = tb
+          if (tb<=model_lat(j) .and. model_lat(j)<=bb) yc(j) = model_lat(j)
+          if (model_lat(j) > bb) yc(j) = bb
         enddo
 
         if (wrap) then
@@ -426,12 +382,12 @@ module nudge_ng_module
 
 ! if the point is inside the inner square, the distance is zero
 ! if the point is outside the inner square, the distance is the great-circle distance to the nearest point
-        do lat = flds(i_ng)%latbeg, flds(i_ng)%latend
-          latpart1 = sin((yc(lat) - model_lat(lat)) * dtr / 2)**2
-          latpart2 = 1 - latpart1 - sin((yc(lat) + model_lat(lat)) * dtr / 2)**2
+        do j = flds(i_ng)%latbeg, flds(i_ng)%latend
+          latpart1 = sin((yc(j) - model_lat(j)) * dtr / 2)**2
+          latpart2 = 1 - latpart1 - sin((yc(j) + model_lat(j)) * dtr / 2)**2
           do i = i0, i1
             lonpart = sin((xc(i) - model_lon(i)) * dtr / 2)**2
-            dist(i, lat) = 2 * asin(sqrt(latpart1 + latpart2*lonpart))
+            dist(i, j) = 2 * asin(sqrt(latpart1 + latpart2*lonpart))
           enddo
         enddo
 
@@ -450,10 +406,6 @@ module nudge_ng_module
 
     call read_data(itime, 1)
     call read_data(itime+1, 2)
-
-    deallocate(buffer_l)
-    deallocate(buffer_i)
-    deallocate(buffer_r)
 
   end subroutine init
 !-----------------------------------------------------------------------
@@ -506,8 +458,9 @@ module nudge_ng_module
     integer, intent(in) :: itime, it
 
     logical :: flag
-    integer :: stat, ifld, i_ng, latbeg, latend, lonbeg, lonend, offbeg, offend, lonbeg1, lonend1, i0, i1, ilev
+    integer :: stat, ifld, i_ng, latbeg, latend, lonbeg, lonend, offbeg, offend, lonbeg1, lonend1, ilev, i0, i1
     real, dimension(1) :: zlbc
+    real, dimension(nlon+1) :: lonp1
     real, dimension(maxval(flds%maxlev)) :: zout
     real, dimension(min(lon0, minval(ng_flds%lond0)): max(lon1, maxval(ng_flds%lond1))) :: model_lon
     real, dimension(minval(flds%latbeg): maxval(flds%latend)) :: model_lat
@@ -546,6 +499,20 @@ module nudge_ng_module
       lonbeg1 = flds(i_ng)%lonbeg1
       lonend1 = flds(i_ng)%lonend1
 
+      if (wrap) then
+        lonp1(1: nlon-lonbeg) = lon(lonbeg+1: nlon)
+        lonp1(nlon-lonbeg+1: nlon+1) = lon(1: lonbeg+1) + 360
+        do ilev = 1, nlev
+          ncf4d(ilev, 1: nlon-lonbeg, :, :) = f4d0(lonbeg+1: nlon, :, ilev, :)
+          ncf4d(ilev, nlon-lonbeg+1: nlon, :, :) = f4d0(1: lonbeg, :, ilev, :)
+        enddo
+        ncf4d(:, nlon+1, :, :) = ncf4d(:, 1, :, :)
+      else
+        do ilev = 1, nlev
+          ncf4d(ilev, 1: nlon, :, :) = f4d0(:, :, ilev, :)
+        enddo
+      endif
+
       if (latbeg<latend .and. nudge_level(i_ng)) then
         if (i_ng == 0) then
           i0 = lon0
@@ -560,18 +527,6 @@ module nudge_ng_module
         endif
 
         if (nudge_lbc) then
-          if (wrap) then
-            do ilev = 1, nlev
-              ncf4d(ilev, 1: nlon-lonbeg, :, :) = f4d0(lonbeg+1: nlon, :, ilev, :)
-              ncf4d(ilev, nlon-lonbeg+1: nlon, :, :) = f4d0(1: lonbeg, :, ilev, :)
-            enddo
-            ncf4d(:, nlon+1, :, :) = ncf4d(:, 1, :, :)
-          else
-            do ilev = 1, nlev
-              ncf4d(ilev, 1: nlon, :, :) = f4d0(:, :, ilev, :)
-            enddo
-          endif
-
           do ifld = 1, nlb
             if (lb_idx(ifld) /= 0) then
               if (nudge_pert) then
@@ -583,41 +538,35 @@ module nudge_ng_module
               if (wrap) then
                 lbc0(:, i0: i1, latbeg: latend) = interp3d( &
                   zlbc, model_lon(i0: i1), model_lat(latbeg: latend), &
-                  z0, z1, lon(lonbeg+1)+offbeg*360, lon(lonbeg+1)+offbeg*360+360, y0, y1, &
-                  ncf4d(:, :, :, lb_idx(ifld)), flag)
+                  lev, lonp1+offbeg*360, lat, ncf4d(:, :, :, lb_idx(ifld)), flag)
                 flds(i_ng)%lbc(:, :, it, ifld) = lbc0(1, i0: i1, latbeg: latend)
               else
                 if (lonbeg<lonend .and. offbeg==offend) then
                   lbc0(:, lonbeg: lonend, latbeg: latend) = interp3d( &
                     zlbc, model_lon(lonbeg: lonend), model_lat(latbeg: latend), &
-                    z0, z1, lon(1)+offbeg*360, lon(nlon)+offend*360, y0, y1, &
-                    ncf4d(:, 1: nlon, :, lb_idx(ifld)), flag)
+                    lev, lon+offbeg*360, lat, ncf4d(:, 1: nlon, :, lb_idx(ifld)), flag)
                   flds(i_ng)%lbc(lonbeg: lonend, :, it, ifld) = lbc0(1, lonbeg: lonend, latbeg: latend)
                 endif
 
                 if (lonbeg<lonend .and. offbeg+1==offend) then
                   lbc0(:, lonbeg: lonend1, latbeg: latend) = interp3d( &
                     zlbc, model_lon(lonbeg: lonend1), model_lat(latbeg: latend), &
-                    z0, z1, lon(1)+offbeg*360, lon(nlon)+offbeg*360, y0, y1, &
-                    ncf4d(:, 1: nlon, :, lb_idx(ifld)), flag)
+                    lev, lon+offbeg*360, lat, ncf4d(:, 1: nlon, :, lb_idx(ifld)), flag)
                   flds(i_ng)%lbc(lonbeg: lonend1, :, it, ifld) = lbc0(1, lonbeg: lonend1, latbeg: latend)
                   lbc0(:, lonbeg1: lonend, latbeg: latend) = interp3d( &
                     zlbc, model_lon(lonbeg1: lonend), model_lat(latbeg: latend), &
-                    z0, z1, lon(1)+offend*360, lon(nlon)+offend*360, y0, y1, &
-                    ncf4d(:, 1: nlon, :, lb_idx(ifld)), flag)
+                    lev, lon+offend*360, lat, ncf4d(:, 1: nlon, :, lb_idx(ifld)), flag)
                   flds(i_ng)%lbc(lonbeg1: lonend, :, it, ifld) = lbc0(1, lonbeg1: lonend, latbeg: latend)
                 endif
 
                 if (lonbeg>lonend .and. offbeg==offend+1) then
                   lbc0(:, lonbeg: i1, latbeg: latend) = interp3d( &
                     zlbc, model_lon(lonbeg: i1), model_lat(latbeg: latend), &
-                    z0, z1, lon(1)+offbeg*360, lon(nlon)+offbeg*360, y0, y1, &
-                    ncf4d(:, 1: nlon, :, lb_idx(ifld)), flag)
+                    lev, lon+offbeg*360, lat, ncf4d(:, 1: nlon, :, lb_idx(ifld)), flag)
                   flds(i_ng)%lbc(lonbeg: i1, :, it, ifld) = lbc0(1, lonbeg: i1, latbeg: latend)
                   lbc0(:, i0: lonend, latbeg: latend) = interp3d( &
                     zlbc, model_lon(i0: lonend), model_lat(latbeg: latend), &
-                    z0, z1, lon(1)+offend*360, lon(nlon)+offend*360, y0, y1, &
-                    ncf4d(:, 1: nlon, :, lb_idx(ifld)), flag)
+                    lev, lon+offend*360, lat, ncf4d(:, 1: nlon, :, lb_idx(ifld)), flag)
                   flds(i_ng)%lbc(i0: lonend, :, it, ifld) = lbc0(1, i0: lonend, latbeg: latend)
                 endif
               endif
@@ -626,18 +575,6 @@ module nudge_ng_module
         endif
 
         if (nudge_f4d) then
-          if (wrap) then
-            do ilev = 1, nlev
-              ncf4d(ilev, 1: nlon-lonbeg, :, :) = f4d0(lonbeg+1: nlon, :, ilev, :)
-              ncf4d(ilev, nlon-lonbeg+1: nlon, :, :) = f4d0(1: lonbeg, :, ilev, :)
-            enddo
-            ncf4d(:, nlon+1, :, :) = ncf4d(:, 1, :, :)
-          else
-            do ilev = 1, nlev
-              ncf4d(ilev, 1: nlon, :, :) = f4d0(:, :, ilev, :)
-            enddo
-          endif
-
           do ifld = 1, nf4d
             if (nudge_pert) then
               flag = .false.
@@ -653,35 +590,29 @@ module nudge_ng_module
             if (wrap) then
               flds(i_ng)%f4d(:, :, :, it, ifld) = interp3d( &
                 zout(1: flds(i_ng)%maxlev), model_lon(i0: i1), model_lat(latbeg: latend), &
-                z0, z1, lon(lonbeg+1)+offbeg*360, lon(lonbeg+1)+offbeg*360+360, y0, y1, &
-                ncf4d(:, :, :, ifld), flag)
+                lev, lonp1+offbeg*360, lat, ncf4d(:, :, :, ifld), flag)
             else
               if (lonbeg<lonend .and. offbeg==offend) &
                 flds(i_ng)%f4d(:, lonbeg: lonend, :, it, ifld) = interp3d( &
                 zout(1: flds(i_ng)%maxlev), model_lon(lonbeg: lonend), model_lat(latbeg: latend), &
-                z0, z1, lon(1)+offbeg*360, lon(nlon)+offend*360, y0, y1, &
-                ncf4d(:, 1: nlon, :, ifld), flag)
+                lev, lon+offbeg*360, lat, ncf4d(:, 1: nlon, :, ifld), flag)
 
               if (lonbeg<lonend .and. offbeg+1==offend) then
                 flds(i_ng)%f4d(:, lonbeg: lonend1, :, it, ifld) = interp3d( &
                   zout(1: flds(i_ng)%maxlev), model_lon(lonbeg: lonend1), model_lat(latbeg: latend), &
-                  z0, z1, lon(1)+offbeg*360, lon(nlon)+offbeg*360, y0, y1, &
-                  ncf4d(:, 1: nlon, :, ifld), flag)
+                  lev, lon+offbeg*360, lat, ncf4d(:, 1: nlon, :, ifld), flag)
                 flds(i_ng)%f4d(:, lonbeg1: lonend, :, it, ifld) = interp3d( &
                   zout(1: flds(i_ng)%maxlev), model_lon(lonbeg1: lonend), model_lat(latbeg: latend), &
-                  z0, z1, lon(1)+offend*360, lon(nlon)+offend*360, y0, y1, &
-                  ncf4d(:, 1: nlon, :, ifld), flag)
+                  lev, lon+offend*360, lat, ncf4d(:, 1: nlon, :, ifld), flag)
               endif
 
               if (lonbeg>lonend .and. offbeg==offend+1) then
                 flds(i_ng)%f4d(:, lonbeg: i1, :, it, ifld) = interp3d( &
                   zout(1: flds(i_ng)%maxlev), model_lon(lonbeg: i1), model_lat(latbeg: latend), &
-                  z0, z1, lon(1)+offbeg*360, lon(nlon)+offbeg*360, y0, y1, &
-                  ncf4d(:, 1: nlon, :, ifld), flag)
+                  lev, lon+offbeg*360, lat, ncf4d(:, 1: nlon, :, ifld), flag)
                 flds(i_ng)%f4d(:, i0: lonend, :, it, ifld) = interp3d( &
                   zout(1: flds(i_ng)%maxlev), model_lon(i0: lonend), model_lat(latbeg: latend), &
-                  z0, z1, lon(1)+offend*360, lon(nlon)+offend*360, y0, y1, &
-                  ncf4d(:, 1: nlon, :, ifld), flag)
+                  lev, lon+offend*360, lat, ncf4d(:, 1: nlon, :, ifld), flag)
               endif
             endif
           enddo
