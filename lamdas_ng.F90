@@ -85,6 +85,7 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,i_ng)
 
   sigma_ped = op*rnu_op/(1.+rnu_op**2)+o2p*rnu_o2p/(1.+rnu_o2p**2)+nop*rnu_nop/(1.+rnu_nop**2)+ne*rnu_ne/(1.+rnu_ne**2)
   sigma_hall = ne/(1.+rnu_ne**2)-op/(1.+rnu_op**2)-o2p/(1.+rnu_o2p**2)-nop/(1.+rnu_nop**2)
+  where (sigma_hall < 1e-20) sigma_hall = 1e-20
   do k = 1,nk
     sigma_ped(k,:,:) = sigma_ped(k,:,:)*qe_fac
     sigma_hall(k,:,:) = sigma_hall(k,:,:)*qe_fac

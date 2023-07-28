@@ -23,8 +23,7 @@
      |  calendar_advance,gpi_ncfile,potential_model,wei05sc_ncfile,
      |  imf_ncfile,current_pg,current_kq,iamie,amie_ibkg,amiesh,amienh,
      |  start_day,nesting,dlev_ng,dlat_ng,dlon_ng,glat0_ng,glat1_ng,
-     |  glon0_ng,glon1_ng,nudge_lbc,nudge_f4d,nudge_pert,nudge_level,
-     |  nudge_alpha
+     |  glon0_ng,glon1_ng,nudge_level,nudge_lbc,nudge_f4d,nudge_alpha
       use input_module,only: 
      |  power  ,power_time  ,ntimes_power, rd_power,
      |  ctpoten,ctpoten_time,ntimes_ctpoten, rd_ctpoten,
@@ -39,7 +38,6 @@
      |  f107a  ,f107a_time  ,ntimes_f107a
       use init_module,only: istep,uthr,iter,secs,iday,iyear
       use cons_module,only: dt,re,cs,racs,ylatm,rtd
-!     use filter_module,only: filter
       use qrj_module,only: init_sflux
       use magfield_module,only: sunloc_apex
       use pdynamo_module,only: pefield
@@ -58,19 +56,19 @@
       use output,only: outhist
       use addfld_module,only: addfld
       use lbc,only: tuvz_lbc,t_lbc,u_lbc,v_lbc,z_lbc
-      use nudge_ng_module,only:
-     |  nudge_check=>check,nudge_init=>init,
-     |  nudge_update=>update,nudge_finalize=>finalize,
-     |  nudge_fields=>flds,nudge_nlb=>nlb,nudge_nf4d=>nf4d,
-     |  nudge_time=>time,nudge_itime=>itime,
-     |  wrap,lb_idx,f4d_idx,no_fill,fill_value
       use fields_ng_module,only:
      |  modeltime_ng=>modeltime,init_ng,alloc_fields
       use level_outer_ng_module,only: init_mapping_1=>init_mapping
       use levels_inner_ng_module,only: init_mapping
       use sync_ng_module,only: init_sync
-      use output_ng_module,only: init_output=>init,
-     |  output_ng=>output,finalize_output=>finalize
+      use output_ng_module,only: init_output_ng=>init,
+     |  output_ng=>output,finalize_output_ng=>finalize
+      use nudge_ng_module,only:
+     |  nudge_check=>check,nudge_init=>init,
+     |  nudge_update=>update,nudge_finalize=>finalize,
+     |  nudge_nlb=>nlb,nudge_nf4d=>nf4d,
+     |  nudge_time=>time,nudge_itime=>itime,
+     |  nudge_fields=>flds,lb_idx,f4d_idx,wrap
 !
 ! Routines and timing for parallel dynamo (pdynamo.F):
       use pdynamo_module,only: dynamo_inputs,pdynamo,pefield,
@@ -103,8 +101,8 @@
 !
 ! Local:
       integer :: i,j,k,lat,itmp,icount_step,nlatlocal,icount_mpi,ier,
-     |  iprint,latbeg,latend,lonbeg,lonend,offbeg,offend,
-     |  lonbeg1,lonend1,modelsec,i_ng,ifld
+     |  iprint,modelsec,ifld,i_ng,latbeg,latend,lonbeg,lonend,
+     |  offbeg,offend,lonbeg1,lonend1
 #if defined(INTERCOMM) || defined(CISMAH)
       integer :: cmodeltime(4) !CISM coupling time
 #endif
@@ -125,7 +123,8 @@
      |  time0_init,     time1_init,
      |  time0_barrier,  time1_barrier
       character(len=3) :: timing_type
-      real,dimension(:,:),allocatable :: w1,w0,tmp_lbc
+      real,dimension(lon0:lon1,lat0:lat1) :: tmp_lbc
+      real,dimension(:,:),allocatable :: wt,ext_fld
       real,dimension(:,:,:),allocatable :: nclbc,tmp_f4d
       real,dimension(:,:,:,:),allocatable :: ncf4d
 !
@@ -254,7 +253,7 @@
 
         call init_ng
         call alloc_fields
-        call init_output
+        call init_output_ng
         call init_mapping_1
         call init_mapping
         call init_sync
@@ -277,10 +276,9 @@
         lonbeg1 = nudge_fields(0)%lonbeg1
         lonend1 = nudge_fields(0)%lonend1
 
-        if (latbeg < latend) then
-          allocate(w1(lon0:lon1,latbeg:latend))
-          allocate(w0(lon0:lon1,latbeg:latend))
-          allocate(tmp_lbc(lon0:lon1,lat0:lat1))
+        if (nudge_level(0) .and. latbeg<latend) then
+          allocate(wt(lon0:lon1,latbeg:latend))
+          allocate(ext_fld(lon0:lon1,latbeg:latend))
           allocate(nclbc(lon0:lon1,latbeg:latend,nudge_nlb))
           allocate(tmp_f4d(nudge_fields(0)%maxlev,lon0:lon1,lat0:lat1))
           allocate(ncf4d(nudge_fields(0)%maxlev,
@@ -405,15 +403,16 @@
       call tuvz_lbc(istep,iyear,iday,secs,itp)
 !
       modelsec = mtime_to_secs(modeltime)-start_day*86400
-      if (nudge_lbc .or. nudge_f4d) then
+
 ! read external fields and interpolate spatially
-        if (nudge_time(nudge_itime+1) < modelsec)
+      if (nudge_lbc .or. nudge_f4d) then
+        if (nudge_time(nudge_itime+1)<modelsec)
      |    call nudge_update(modelsec)
       endif
 
 ! lower boundary based on nudge data
-      if (nudge_lbc .and. nudge_level(0)) then
-        if (latbeg<latend .and.
+      if (nudge_lbc) then
+        if (nudge_level(0) .and. latbeg<latend .and.
      |    nudge_time(nudge_itime)<=modelsec .and.
      |    modelsec<=nudge_time(nudge_itime+1)) then
 
@@ -424,12 +423,7 @@
           nclbc = fac1*nudge_fields(0)%lbc(:,:,1,:)+
      |      fac2*nudge_fields(0)%lbc(:,:,2,:)
 
-          w1 = nudge_alpha*nudge_fields(0)%hori_weight
-          if (nudge_pert) then
-            w0 = 1
-          else
-            w0 = 1-w1
-          endif
+          wt = nudge_alpha*nudge_fields(0)%hori_weight
 
           do ifld = 1,nudge_nlb
             if (lb_idx(ifld) /= 0) then
@@ -444,75 +438,44 @@
                   tmp_lbc = z_lbc(lon0:lon1,lat0:lat1)
               endselect
 
+              ext_fld =
+     |          wt*nclbc(:,:,ifld)+(1-wt)*tmp_lbc(:,latbeg:latend)
+
 ! find the corresponding grid and replace the model fields
-              do lat = latbeg,latend
-                if (wrap) then
-                  do i = lon0,lon1
-                    if (no_fill(lb_idx(ifld)) .or. .not.
-     |                isclose(nclbc(i,lat,ifld),
-     |                fill_value(lb_idx(ifld))))
-     |                tmp_lbc(i,lat) = w1(i,lat)*nclbc(i,lat,ifld)+
-     |                w0(i,lat)*tmp_lbc(i,lat)
-                  enddo
-                else
-                  if (lonbeg<lonend .and. offbeg==offend) then
-                    do i = lonbeg,lonend
-                      if (no_fill(lb_idx(ifld)) .or. .not.
-     |                  isclose(nclbc(i,lat,ifld),
-     |                  fill_value(lb_idx(ifld))))
-     |                  tmp_lbc(i,lat) = w1(i,lat)*nclbc(i,lat,ifld)+
-     |                  w0(i,lat)*tmp_lbc(i,lat)
-                    enddo
-                  endif
+              if (wrap) then
+                tmp_lbc(:,latbeg:latend) = ext_fld
+              else
+                if (lonbeg<lonend .and. offbeg==offend)
+     |            tmp_lbc(lonbeg:lonend,latbeg:latend) =
+     |            ext_fld(lonbeg:lonend,:)
 
-                  if (lonbeg<lonend .and. offbeg+1==offend) then
-                    do i = lonbeg,lonend1
-                      if (no_fill(lb_idx(ifld)) .or. .not.
-     |                  isclose(nclbc(i,lat,ifld),
-     |                  fill_value(lb_idx(ifld))))
-     |                  tmp_lbc(i,lat) = w1(i,lat)*nclbc(i,lat,ifld)+
-     |                  w0(i,lat)*tmp_lbc(i,lat)
-                    enddo
-                    do i = lonbeg1,lonend
-                      if (no_fill(lb_idx(ifld)) .or. .not.
-     |                  isclose(nclbc(i,lat,ifld),
-     |                  fill_value(lb_idx(ifld))))
-     |                  tmp_lbc(i,lat) = w1(i,lat)*nclbc(i,lat,ifld)+
-     |                  w0(i,lat)*tmp_lbc(i,lat)
-                    enddo
-                  endif
-
-                  if (lonbeg>lonend .and. offbeg==offend+1) then
-                    do i = lonbeg,lon1
-                      if (no_fill(lb_idx(ifld)) .or. .not.
-     |                  isclose(nclbc(i,lat,ifld),
-     |                  fill_value(lb_idx(ifld))))
-     |                  tmp_lbc(i,lat) = w1(i,lat)*nclbc(i,lat,ifld)+
-     |                  w0(i,lat)*tmp_lbc(i,lat)
-                    enddo
-                    do i = lon0,lonend
-                      if (no_fill(lb_idx(ifld)) .or. .not.
-     |                  isclose(nclbc(i,lat,ifld),
-     |                  fill_value(lb_idx(ifld))))
-     |                  tmp_lbc(i,lat) = w1(i,lat)*nclbc(i,lat,ifld)+
-     |                  w0(i,lat)*tmp_lbc(i,lat)
-                    enddo
-                  endif
+                if (lonbeg<lonend .and. offbeg+1==offend) then
+                  tmp_lbc(lonbeg:lonend1,latbeg:latend) =
+     |              ext_fld(lonbeg:lonend1,:)
+                  tmp_lbc(lonbeg1:lonend,latbeg:latend) =
+     |              ext_fld(lonbeg1:lonend,:)
                 endif
-              enddo
 
-              call mp_periodic_f2d(tmp_lbc,lon0,lon1,lat0,lat1,1)
-              select case (ifld)
-                case (1)
-                  t_lbc(lon0:lon1,lat0:lat1) = tmp_lbc
-                case (2)
-                  u_lbc(lon0:lon1,lat0:lat1) = tmp_lbc
-                case (3)
-                  v_lbc(lon0:lon1,lat0:lat1) = tmp_lbc
-                case (4)
-                  z_lbc(lon0:lon1,lat0:lat1) = tmp_lbc
-              endselect
+                if (lonbeg>lonend .and. offbeg==offend+1) then
+                  tmp_lbc(lonbeg:lon1,latbeg:latend) =
+     |              ext_fld(lonbeg:lon1,:)
+                  tmp_lbc(lon0:lonend,latbeg:latend) =
+     |              ext_fld(lon0:lonend,:)
+                endif
+              endif
             endif
+
+            call mp_periodic_f2d(tmp_lbc,lon0,lon1,lat0,lat1,1)
+            select case (ifld)
+              case (1)
+                t_lbc(lon0:lon1,lat0:lat1) = tmp_lbc
+              case (2)
+                u_lbc(lon0:lon1,lat0:lat1) = tmp_lbc
+              case (3)
+                v_lbc(lon0:lon1,lat0:lat1) = tmp_lbc
+              case (4)
+                z_lbc(lon0:lon1,lat0:lat1) = tmp_lbc
+            endselect
           enddo
         endif
       endif
@@ -826,8 +789,8 @@
         if (time2write) call output_ng
       endif
 !
-      if (nudge_f4d .and. nudge_level(0)) then
-        if (latbeg<latend .and.
+      if (nudge_f4d) then
+        if (nudge_level(0) .and. latbeg<latend .and.
      |    nudge_time(nudge_itime)<=modelsec .and.
      |    modelsec<=nudge_time(nudge_itime+1)) then
 
@@ -842,82 +805,39 @@
      |        data(1:nudge_fields(0)%maxlev,lon0:lon1,lat0:lat1,itc)
 
             do k = 1,nudge_fields(0)%maxlev
-              w1 = nudge_alpha*nudge_fields(0)%hori_weight*
+              wt = nudge_alpha*nudge_fields(0)%hori_weight*
      |          nudge_fields(0)%vert_weight(k,ifld)
-              if (nudge_pert) then
-                w0 = 1
+              ext_fld =
+     |          wt*ncf4d(k,:,:,ifld)+(1-wt)*tmp_f4d(k,:,latbeg:latend)
+
+              if (wrap) then
+                tmp_f4d(k,:,latbeg:latend) = ext_fld
               else
-                w0 = 1-w1
-              endif
+                if (lonbeg<lonend .and. offbeg==offend)
+     |            tmp_f4d(k,lonbeg:lonend,latbeg:latend) =
+     |            ext_fld(lonbeg:lonend,:)
 
-              do lat = latbeg,latend
-                if (wrap) then
-                  do i = lon0,lon1
-                    if (no_fill(lb_idx(ifld)) .or. .not.
-     |                isclose(nclbc(i,lat,ifld),
-     |                fill_value(lb_idx(ifld))))
-     |                tmp_f4d(k,i,lat) =
-     |                w1(i,lat)*ncf4d(k,i,lat,ifld)+
-     |                w0(i,lat)*tmp_f4d(k,i,lat)
-                  enddo
-                else
-                  if (lonbeg<lonend .and. offbeg==offend) then
-                    do i = lonbeg,lonend
-                      if (no_fill(lb_idx(ifld)) .or. .not.
-     |                  isclose(nclbc(i,lat,ifld),
-     |                  fill_value(lb_idx(ifld))))
-     |                  tmp_f4d(k,i,lat) =
-     |                  w1(i,lat)*ncf4d(k,i,lat,ifld)+
-     |                  w0(i,lat)*tmp_f4d(k,i,lat)
-                    enddo
-                  endif
-
-                  if (lonbeg<lonend .and. offbeg+1==offend) then
-                    do i = lonbeg,lonend1
-                      if (no_fill(lb_idx(ifld)) .or. .not.
-     |                  isclose(nclbc(i,lat,ifld),
-     |                  fill_value(lb_idx(ifld))))
-     |                  tmp_f4d(k,i,lat) =
-     |                  w1(i,lat)*ncf4d(k,i,lat,ifld)+
-     |                  w0(i,lat)*tmp_f4d(k,i,lat)
-                    enddo
-                    do i = lonbeg,lonend1
-                      if (no_fill(lb_idx(ifld)) .or. .not.
-     |                  isclose(nclbc(i,lat,ifld),
-     |                  fill_value(lb_idx(ifld))))
-     |                  tmp_f4d(k,i,lat) =
-     |                  w1(i,lat)*ncf4d(k,i,lat,ifld)+
-     |                  w0(i,lat)*tmp_f4d(k,i,lat)
-                    enddo
-                  endif
-
-                  if (lonbeg>lonend .and. offbeg==offend+1) then
-                    do i = lonbeg,lon1
-                      if (no_fill(lb_idx(ifld)) .or. .not.
-     |                  isclose(nclbc(i,lat,ifld),
-     |                  fill_value(lb_idx(ifld))))
-     |                  tmp_f4d(k,i,lat) =
-     |                  w1(i,lat)*ncf4d(k,i,lat,ifld)+
-     |                  w0(i,lat)*tmp_f4d(k,i,lat)
-                    enddo
-                    do i = lonbeg,lonend
-                      if (no_fill(lb_idx(ifld)) .or. .not.
-     |                  isclose(nclbc(i,lat,ifld),
-     |                  fill_value(lb_idx(ifld))))
-     |                  tmp_f4d(k,i,lat) =
-     |                  w1(i,lat)*ncf4d(k,i,lat,ifld)+
-     |                  w0(i,lat)*tmp_f4d(k,i,lat)
-                    enddo
-                  endif
+                if (lonbeg<lonend .and. offbeg+1==offend) then
+                  tmp_f4d(k,lonbeg:lonend1,latbeg:latend) =
+     |              ext_fld(lonbeg:lonend1,:)
+                  tmp_f4d(k,lonbeg1:lonend,latbeg:latend) =
+     |              ext_fld(lonbeg1:lonend,:)
                 endif
-              enddo
-            enddo
 
-            call mp_periodic_f3d(tmp_f4d,1,nudge_fields(0)%maxlev,
-     |        lon0,lon1,lat0,lat1,1)
-            f4d(f4d_idx(ifld))%data(1:nudge_fields(0)%maxlev,
-     |        lon0:lon1,lat0:lat1,itc) = tmp_f4d
+                if (lonbeg>lonend .and. offbeg==offend+1) then
+                  tmp_f4d(k,lonbeg:lon1,latbeg:latend) =
+     |              ext_fld(lonbeg:lon1,:)
+                  tmp_f4d(k,lon0:lonend,latbeg:latend) =
+     |              ext_fld(lon0:lonend,:)
+                endif
+              endif
+            enddo
           enddo
+
+          call mp_periodic_f3d(tmp_f4d,1,nudge_fields(0)%maxlev,
+     |      lon0,lon1,lat0,lat1,1)
+          f4d(f4d_idx(ifld))%data(1:nudge_fields(0)%maxlev,
+     |      lon0:lon1,lat0:lat1,itc) = tmp_f4d
         endif
       endif
 !
@@ -1040,7 +960,7 @@
         goto 100
       endif
 !
-      if (nesting) call finalize_output
+      if (nesting) call finalize_output_ng
       if (nudge_lbc .or. nudge_f4d) call nudge_finalize
 !
 #ifdef VT

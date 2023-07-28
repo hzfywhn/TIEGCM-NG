@@ -4,29 +4,27 @@ recursive subroutine advance_ng(i_ng)
 ! a recursive subroutine is suitable for such stack-like procedures
 
   use params_module,only: n_ng,nlevp1_ng
-  use input_module,only: nstep_ng,nstep_sub,nudge_lbc,nudge_f4d,nudge_pert,nudge_level,nudge_alpha
+  use input_module,only: nstep_ng,nstep_sub,nudge_level,nudge_lbc,nudge_f4d,nudge_alpha
   use cons_module,only: gask,grav
   use fields_ng_module,only: flds,nf3din,nf2din,itp,itc,modeltime,step
   use level_outer_ng_module,only: map_in_1=>map_in,map_out_1=>map_out,set_bndry_1=>set_bndry
   use levels_inner_ng_module,only: map_in,map_out,set_bndry
-  use nudge_ng_module,only: nudge_fields=>flds,nlb,nf4d,time,itime,wrap,lb_idx,f4d_idx,no_fill,fill_value
-  use output_ng_module,only: output,addfld
+  use nudge_ng_module,only: nudge_fields=>flds,nlb,nf4d,time,itime,wrap,lb_idx,f4d_idx
+  use output_ng_module,only: addfld
   implicit none
 
   integer,intent(in) :: i_ng
 
-  logical,parameter :: debug = .false.
-  integer :: istep,ifld,lat,i,nk,k,latbeg,latend,lonbeg,lonend,offbeg,offend,lonbeg1,lonend1,itmp
+  integer :: istep,ifld,nk,k,latbeg,latend,lonbeg,lonend,offbeg,offend,lonbeg1,lonend1,itmp
   real :: delta,fac1,fac2
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     tn,mbar,omega,scheight,omegai,wn
-  real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend) :: w1,w0
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: tmp_lbc
+  real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend) :: wt,ext_fld
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend,nlb) :: nclbc
   real,dimension(nudge_fields(i_ng)%maxlev,flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: tmp_f4d
   real,dimension(nudge_fields(i_ng)%maxlev,flds(i_ng)%lond0:flds(i_ng)%lond1, &
     nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend,nf4d) :: ncf4d
-  logical,external :: isclose
   external :: interp_fields_ng,addiag_ng,hdif12_ng,dynamics_ng
 
 ! return beyond inner most level
@@ -58,77 +56,54 @@ recursive subroutine advance_ng(i_ng)
   do istep = 1,nstep_ng(i_ng)
     modeltime(i_ng) = modeltime(i_ng)+step(i_ng)
 
+! each sub-cycle starts with replacing lower boundary with external fields
+    if (nudge_lbc) then
+      if (nudge_level(i_ng) .and. latbeg<latend .and. &
+        time(itime)<=modeltime(i_ng) .and. modeltime(i_ng)<=time(itime+1)) then
+
+        delta = time(itime+1)-time(itime)
+        fac1 = (time(itime+1)-modeltime(i_ng))/delta
+        fac2 = (modeltime(i_ng)-time(itime))/delta
+        nclbc = fac1*nudge_fields(i_ng)%lbc(:,:,1,:)+fac2*nudge_fields(i_ng)%lbc(:,:,2,:)
+
+        wt = nudge_alpha*nudge_fields(i_ng)%hori_weight
+
+        do ifld = 1,nlb
+          if (lb_idx(ifld) /= 0) then
+            tmp_lbc = flds(i_ng)%f2d_save(:,:,istep,ifld)
+            ext_fld = wt*nclbc(:,:,ifld)+(1-wt)*tmp_lbc(:,latbeg:latend)
+
+            if (wrap) then
+              tmp_lbc(:,latbeg:latend) = ext_fld
+            else
+              if (lonbeg<lonend .and. offbeg==offend) &
+                tmp_lbc(lonbeg:lonend,latbeg:latend) = ext_fld(lonbeg:lonend,:)
+
+              if (lonbeg<lonend .and. offbeg+1==offend) then
+                tmp_lbc(lonbeg:lonend1,latbeg:latend) = ext_fld(lonbeg:lonend1,:)
+                tmp_lbc(lonbeg1:lonend,latbeg:latend) = ext_fld(lonbeg1:lonend,:)
+              endif
+
+              if (lonbeg>lonend .and. offbeg==offend+1) then
+                tmp_lbc(lonbeg:flds(i_ng)%lond1,latbeg:latend) = ext_fld(lonbeg:flds(i_ng)%lond1,:)
+                tmp_lbc(flds(i_ng)%lond0:lonend,latbeg:latend) = ext_fld(flds(i_ng)%lond0:lonend,:)
+              endif
+            endif
+
+            flds(i_ng)%f2d_save(:,:,istep,ifld) = tmp_lbc
+          endif
+        enddo
+      endif
+    endif
+
 ! essential 2d/3d fields (lower boundary conditions and electric fields) are stored in f2d_save/f3d_save
-! before each sub-cycle, they will replace the outdated f2din/f3din fields
+! before each sub-cycle, they will replace the outdated f2din/f3din fields in the previous sub-cycle
     do ifld = 1,nf3din
       flds(i_ng)%f3din(ifld)%data = flds(i_ng)%f3d_save(:,:,:,istep,ifld)
     enddo
     do ifld = 1,nf2din
       flds(i_ng)%f2din(ifld)%data = flds(i_ng)%f2d_save(:,:,istep,ifld)
     enddo
-
-    if (nudge_lbc .and. nudge_level(i_ng)) then
-      if (latbeg<latend .and. time(itime)<=modeltime(i_ng) .and. modeltime(i_ng)<=time(itime+1)) then
-        delta = time(itime+1)-time(itime)
-        fac1 = (time(itime+1)-modeltime(i_ng))/delta
-        fac2 = (modeltime(i_ng)-time(itime))/delta
-        nclbc = fac1*nudge_fields(i_ng)%lbc(:,:,1,:)+fac2*nudge_fields(i_ng)%lbc(:,:,2,:)
-
-        w1 = nudge_alpha*nudge_fields(i_ng)%hori_weight
-        if (nudge_pert) then
-          w0 = 1
-        else
-          w0 = 1-w1
-        endif
-
-        do ifld = 1,nlb
-          if (lb_idx(ifld) /= 0) then
-            tmp_lbc = flds(i_ng)%f2d_save(:,:,istep,ifld)
-
-            do lat = latbeg,latend
-              if (wrap) then
-                do i = flds(i_ng)%lond0,flds(i_ng)%lond1
-                  if (no_fill(lb_idx(ifld)) .or. .not. isclose(nclbc(i,lat,ifld),fill_value(lb_idx(ifld)))) &
-                    tmp_lbc(i,lat) = w1(i,lat)*nclbc(i,lat,ifld)+w0(i,lat)*tmp_lbc(i,lat)
-                enddo
-              else
-                if (lonbeg<lonend .and. offbeg==offend) then
-                  do i = lonbeg,lonend
-                    if (no_fill(lb_idx(ifld)) .or. .not. isclose(nclbc(i,lat,ifld),fill_value(lb_idx(ifld)))) &
-                      tmp_lbc(i,lat) = w1(i,lat)*nclbc(i,lat,ifld)+w0(i,lat)*tmp_lbc(i,lat)
-                  enddo
-                endif
-
-                if (lonbeg<lonend .and. offbeg+1==offend) then
-                  do i = lonbeg,lonend1
-                    if (no_fill(lb_idx(ifld)) .or. .not. isclose(nclbc(i,lat,ifld),fill_value(lb_idx(ifld)))) &
-                      tmp_lbc(i,lat) = w1(i,lat)*nclbc(i,lat,ifld)+w0(i,lat)*tmp_lbc(i,lat)
-                  enddo
-                  do i = lonbeg1,lonend
-                    if (no_fill(lb_idx(ifld)) .or. .not. isclose(nclbc(i,lat,ifld),fill_value(lb_idx(ifld)))) &
-                      tmp_lbc(i,lat) = w1(i,lat)*nclbc(i,lat,ifld)+w0(i,lat)*tmp_lbc(i,lat)
-                  enddo
-                endif
-
-                if (lonbeg>lonend .and. offbeg==offend+1) then
-                  do i = lonbeg,flds(i_ng)%lond1
-                    if (no_fill(lb_idx(ifld)) .or. .not. isclose(nclbc(i,lat,ifld),fill_value(lb_idx(ifld)))) &
-                      tmp_lbc(i,lat) = w1(i,lat)*nclbc(i,lat,ifld)+w0(i,lat)*tmp_lbc(i,lat)
-                  enddo
-                  do i = flds(i_ng)%lond0,lonend
-                    if (no_fill(lb_idx(ifld)) .or. .not. isclose(nclbc(i,lat,ifld),fill_value(lb_idx(ifld)))) &
-                      tmp_lbc(i,lat) = w1(i,lat)*nclbc(i,lat,ifld)+w0(i,lat)*tmp_lbc(i,lat)
-                  enddo
-                endif
-              endif
-
-              flds(i_ng)%f2din(ifld)%data = tmp_lbc
-              flds(i_ng)%f2d_save(:,:,istep,ifld) = tmp_lbc
-            enddo
-          endif
-        enddo
-      endif
-    endif
 
     call addfld(flds(i_ng)%t_lbc,'TLBC',i_ng)
     call addfld(flds(i_ng)%u_lbc,'ULBC',i_ng)
@@ -174,8 +149,10 @@ recursive subroutine advance_ng(i_ng)
     wn = omegai*scheight
     call addfld(wn,'WN',i_ng)
 
-    if (nudge_f4d .and. nudge_level(i_ng)) then
-      if (latbeg<latend .and. time(itime)<=modeltime(i_ng) .and. modeltime(i_ng)<=time(itime+1)) then
+    if (nudge_f4d) then
+      if (nudge_level(i_ng) .and. latbeg<latend .and. &
+        time(itime)<=modeltime(i_ng) .and. modeltime(i_ng)<=time(itime+1)) then
+
         delta = time(itime+1)-time(itime)
         fac1 = (time(itime+1)-modeltime(i_ng))/delta
         fac2 = (modeltime(i_ng)-time(itime))/delta
@@ -185,50 +162,25 @@ recursive subroutine advance_ng(i_ng)
           tmp_f4d = flds(i_ng)%f4d(f4d_idx(ifld))%data(1:nudge_fields(i_ng)%maxlev,:,:,itc(i_ng))
 
           do k = 1,nudge_fields(i_ng)%maxlev
-            w1 = nudge_alpha*nudge_fields(i_ng)%hori_weight*nudge_fields(i_ng)%vert_weight(k,ifld)
-            if (nudge_pert) then
-              w0 = 1
+            wt = nudge_alpha*nudge_fields(i_ng)%hori_weight*nudge_fields(i_ng)%vert_weight(k,ifld)
+            ext_fld = wt*ncf4d(k,:,:,ifld)+(1-wt)*tmp_f4d(k,:,latbeg:latend)
+
+            if (wrap) then
+              tmp_f4d(k,:,latbeg:latend) = ext_fld
             else
-              w0 = 1-w1
-            endif
+              if (lonbeg<lonend .and. offbeg==offend) &
+                tmp_f4d(k,lonbeg:lonend,latbeg:latend) = ext_fld(lonbeg:lonend,:)
 
-            do lat = latbeg,latend
-              if (wrap) then
-                do i = flds(i_ng)%lond0,flds(i_ng)%lond1
-                  if (no_fill(lb_idx(ifld)) .or. .not. isclose(nclbc(i,lat,ifld),fill_value(lb_idx(ifld)))) &
-                    tmp_f4d(k,i,lat) = w1(i,lat)*ncf4d(k,i,lat,ifld)+w0(i,lat)*tmp_f4d(k,i,lat)
-                enddo
-              else
-                if (lonbeg<lonend .and. offbeg==offend) then
-                  do i = lonbeg,lonend
-                    if (no_fill(lb_idx(ifld)) .or. .not. isclose(nclbc(i,lat,ifld),fill_value(lb_idx(ifld)))) &
-                      tmp_f4d(k,i,lat) = w1(i,lat)*ncf4d(k,i,lat,ifld)+w0(i,lat)*tmp_f4d(k,i,lat)
-                  enddo
-                endif
-
-                if (lonbeg<lonend .and. offbeg+1==offend) then
-                  do i = lonbeg,lonend1
-                    if (no_fill(lb_idx(ifld)) .or. .not. isclose(nclbc(i,lat,ifld),fill_value(lb_idx(ifld)))) &
-                      tmp_f4d(k,i,lat) = w1(i,lat)*ncf4d(k,i,lat,ifld)+w0(i,lat)*tmp_f4d(k,i,lat)
-                  enddo
-                  do i = lonbeg1,lonend
-                    if (no_fill(lb_idx(ifld)) .or. .not. isclose(nclbc(i,lat,ifld),fill_value(lb_idx(ifld)))) &
-                      tmp_f4d(k,i,lat) = w1(i,lat)*ncf4d(k,i,lat,ifld)+w0(i,lat)*tmp_f4d(k,i,lat)
-                  enddo
-                endif
-
-                if (lonbeg>lonend .and. offbeg==offend+1) then
-                  do i = lonbeg,flds(i_ng)%lond1
-                    if (no_fill(lb_idx(ifld)) .or. .not. isclose(nclbc(i,lat,ifld),fill_value(lb_idx(ifld)))) &
-                      tmp_f4d(k,i,lat) = w1(i,lat)*ncf4d(k,i,lat,ifld)+w0(i,lat)*tmp_f4d(k,i,lat)
-                  enddo
-                  do i = flds(i_ng)%lond0,lonend
-                    if (no_fill(lb_idx(ifld)) .or. .not. isclose(nclbc(i,lat,ifld),fill_value(lb_idx(ifld)))) &
-                      tmp_f4d(k,i,lat) = w1(i,lat)*ncf4d(k,i,lat,ifld)+w0(i,lat)*tmp_f4d(k,i,lat)
-                  enddo
-                endif
+              if (lonbeg<lonend .and. offbeg+1==offend) then
+                tmp_f4d(k,lonbeg:lonend1,latbeg:latend) = ext_fld(lonbeg:lonend1,:)
+                tmp_f4d(k,lonbeg1:lonend,latbeg:latend) = ext_fld(lonbeg1:lonend,:)
               endif
-            enddo
+
+              if (lonbeg>lonend .and. offbeg==offend+1) then
+                tmp_f4d(k,lonbeg:flds(i_ng)%lond1,latbeg:latend) = ext_fld(lonbeg:flds(i_ng)%lond1,:)
+                tmp_f4d(k,flds(i_ng)%lond0:lonend,latbeg:latend) = ext_fld(flds(i_ng)%lond0:lonend,:)
+              endif
+            endif
           enddo
 
           flds(i_ng)%f4d(f4d_idx(ifld))%data(1:nudge_fields(i_ng)%maxlev,:,:,itc(i_ng)) = tmp_f4d
@@ -243,9 +195,6 @@ recursive subroutine advance_ng(i_ng)
     itmp = itp(i_ng)
     itp(i_ng) = itc(i_ng)
     itc(i_ng) = itmp
-
-! output at every time step, for testing purpose only
-    if (debug) call output
   enddo
 
 ! save the last step for interpolation in the next iteration

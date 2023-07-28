@@ -355,7 +355,7 @@ module level_outer_ng_module
 
     if (latbeg < latend) then
 ! note that there are also three longitudinal situations that need to be considered separately
-      if (glon_ng(1,nlon_ng(2)+2) <= glon0(nlonp4)) then
+      if (glon_ng(1,nlon_ng(1)+2) <= glon0(nlonp4)) then
         do lonbeg = lon0,lon1
           if (glon0(lonbeg) > glon_ng(1,-1)) exit
         enddo

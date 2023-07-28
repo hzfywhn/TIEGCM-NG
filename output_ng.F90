@@ -43,12 +43,12 @@ module output_ng_module
     use fields_ng_module,only: flds
     use char_module,only: ismember
     use mpi_module,only: mytid
-    use netcdf,only: nf90_netcdf4,nf90_unlimited,nf90_double, &
-      nf90_create,nf90_def_dim,nf90_def_var,nf90_enddef,nf90_put_var,nf90_put_att
+    use netcdf,only: nf90_create,nf90_def_dim,nf90_def_var,nf90_enddef,nf90_put_var, &
+      nf90_put_att,nf90_strerror,nf90_netcdf4,nf90_unlimited,nf90_double,nf90_noerr
 
     integer :: month,day,if4d,i_ng,stat,varid_lon,varid_lat,varid_lev,varid_ilev
     character(len=80) :: units
-    external :: to_month_day
+    external :: to_month_day,shutdown
 
     irec = 1
     call to_month_day(start_year,start_day,month,day)
@@ -77,39 +77,88 @@ module output_ng_module
     if (mytid == 0) then
       do i_ng = 1,n_ng
         stat = nf90_create(trim(fileout_ng(i_ng)),nf90_netcdf4,ncid(i_ng))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at creating '//trim(fileout_ng(i_ng)))
 
         stat = nf90_def_dim(ncid(i_ng),'lon',nlon_ng(i_ng)+4,dim_lon(i_ng))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at defining dimension lon')
+
         stat = nf90_def_dim(ncid(i_ng),'lat',nlat_ng(i_ng)+4,dim_lat(i_ng))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at defining dimension lat')
+
         stat = nf90_def_dim(ncid(i_ng),'lev',nlevp1_ng(i_ng),dim_lev(i_ng))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at defining dimension lev')
+
         stat = nf90_def_dim(ncid(i_ng),'ilev',nlevp1_ng(i_ng),dim_ilev(i_ng))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at defining dimension ilev')
+
         stat = nf90_def_dim(ncid(i_ng),'time',nf90_unlimited,dim_time(i_ng))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at defining dimension time')
 
         stat = nf90_def_var(ncid(i_ng),'lon',nf90_double,dim_lon(i_ng),varid_lon)
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at defining variable lon')
+
         stat = nf90_def_var(ncid(i_ng),'lat',nf90_double,dim_lat(i_ng),varid_lat)
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at defining variable lat')
+
         stat = nf90_def_var(ncid(i_ng),'lev',nf90_double,dim_lev(i_ng),varid_lev)
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at defining variable lev')
+
         stat = nf90_def_var(ncid(i_ng),'ilev',nf90_double,dim_ilev(i_ng),varid_ilev)
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at defining variable ilev')
+
         stat = nf90_def_var(ncid(i_ng),'time',nf90_double,dim_time(i_ng),varid_time(i_ng))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at defining variable time')
 
         stat = nf90_enddef(ncid(i_ng))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at exiting def mode')
 
         stat = nf90_put_var(ncid(i_ng),varid_lon,glon_ng(i_ng,-1:nlon_ng(i_ng)+2))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting variable lon')
+
         stat = nf90_put_var(ncid(i_ng),varid_lat,glat_ng(i_ng,-1:nlat_ng(i_ng)+2))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting variable lat')
 
         stat = nf90_put_var(ncid(i_ng),varid_lev,zpmid_ng(i_ng,1:nlevp1_ng(i_ng)))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting variable lev')
+
         stat = nf90_put_var(ncid(i_ng),varid_ilev,zpint_ng(i_ng,1:nlevp1_ng(i_ng)))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting variable ilev')
 
         stat = nf90_put_att(ncid(i_ng),varid_lon,'long_name','geographic longitude (-west, +east)')
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting attribute lon.long_name')
+
         stat = nf90_put_att(ncid(i_ng),varid_lon,'units','degrees_east')
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting attribute lon.units')
+
         stat = nf90_put_att(ncid(i_ng),varid_lat,'long_name','geographic latitude (-south, +north)')
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting attribute lat.long_name')
+
         stat = nf90_put_att(ncid(i_ng),varid_lat,'units','degrees_north')
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting attribute lat.units')
+
         stat = nf90_put_att(ncid(i_ng),varid_lev,'long_name','midpoint levels')
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting attribute lev.long_name')
+
         stat = nf90_put_att(ncid(i_ng),varid_lev,'short_name','ln(p0/p)')
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting attribute lev.short_name')
+
         stat = nf90_put_att(ncid(i_ng),varid_lev,'units','')
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting attribute lev.units')
+
         stat = nf90_put_att(ncid(i_ng),varid_ilev,'long_name','interface levels')
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting attribute ilev.long_name')
+
         stat = nf90_put_att(ncid(i_ng),varid_ilev,'short_name','ln(p0/p)')
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting attribute ilev.short_name')
+
         stat = nf90_put_att(ncid(i_ng),varid_ilev,'units','')
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting attribute ilev.units')
+
         stat = nf90_put_att(ncid(i_ng),varid_time(i_ng),'long_name','time')
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting attribute time.long_name')
+
         stat = nf90_put_att(ncid(i_ng),varid_time(i_ng),'units',trim(units))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at putting attribute time.units')
       enddo
     endif
 
@@ -118,12 +167,14 @@ module output_ng_module
   subroutine output
 
     use params_module,only: n_ng,nlevp1_ng,nlon_ng,nlat_ng
+    use input_module,only: fileout_ng
     use fields_module,only: f4d
     use fields_ng_module,only: flds,itc,modeltime
     use char_module,only: find_index
     use mpi_module,only: mytid
     use gather2root_ng_module,only: gather2root_vars2d,gather2root_vars3d
-    use netcdf,only: nf90_float,nf90_redef,nf90_def_var,nf90_enddef,nf90_put_att,nf90_put_var,nf90_sync
+    use netcdf,only: nf90_redef,nf90_def_var,nf90_enddef,nf90_put_att, &
+      nf90_put_var,nf90_sync,nf90_strerror,nf90_float,nf90_noerr
     use mpi_f08,only: mpi_barrier,mpi_comm_world
 
     integer :: i_ng,stat,if2d,if3d,if4d,ilev,dim_v
@@ -131,38 +182,53 @@ module output_ng_module
     real,dimension(maxval(nlevp1_ng),-1:maxval(nlon_ng)+2,-1:maxval(nlat_ng)+2,nf3d) :: full3d
     real(kind=4),dimension(-1:maxval(nlon_ng)+2,-1:maxval(nlat_ng)+2) :: fout2d
     real(kind=4),dimension(-1:maxval(nlon_ng)+2,-1:maxval(nlat_ng)+2,maxval(nlevp1_ng)) :: fout3d
+    external :: shutdown
 
 ! define output fields in the output files, this finishes initialization
     if (.not. defined) then
-      do i_ng = 1,n_ng
-        stat = nf90_redef(ncid(i_ng))
+      if (mytid == 0) then
+        do i_ng = 1,n_ng
+          stat = nf90_redef(ncid(i_ng))
+          if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at entering def mode')
 
-        do if2d = 1,nf2d
-          stat = nf90_def_var(ncid(i_ng),trim(f2d_name(if2d)),nf90_float, &
-            (/dim_lon(i_ng),dim_lat(i_ng),dim_time(i_ng)/),fout(i_ng)%f2d_id(if2d))
+          do if2d = 1,nf2d
+            stat = nf90_def_var(ncid(i_ng),trim(f2d_name(if2d)),nf90_float, &
+              (/dim_lon(i_ng),dim_lat(i_ng),dim_time(i_ng)/),fout(i_ng)%f2d_id(if2d))
+            if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at defining variable '//trim(f2d_name(if2d)))
+          enddo
+
+          do if3d = 1,nf3d
+            dim_v = dim_lev(i_ng)
+            if4d = find_index(f3d_name(if3d),f4d%short_name)
+            if (if4d /= 0) then
+              if (trim(f4d(if4d)%vcoord) == 'interfaces') dim_v = dim_ilev(i_ng)
+            endif
+            stat = nf90_def_var(ncid(i_ng),trim(f3d_name(if3d)),nf90_float, &
+              (/dim_lon(i_ng),dim_lat(i_ng),dim_v,dim_time(i_ng)/),fout(i_ng)%f3d_id(if3d))
+            if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at defining variable '//trim(f3d_name(if3d)))
+          enddo
+
+          stat = nf90_enddef(ncid(i_ng))
+          if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at exiting def mode')
+
+          do if3d = 1,nf3d
+            if4d = find_index(f3d_name(if3d),f4d%short_name)
+            if (if4d /= 0) then
+              stat = nf90_put_att(ncid(i_ng),fout(i_ng)%f3d_id(if3d),'long_name',f4d(if4d)%long_name)
+              if (stat /= nf90_noerr) &
+                call shutdown(trim(nf90_strerror(stat))//' at putting attribute '//trim(f3d_name(if3d))//'.long_name')
+
+              stat = nf90_put_att(ncid(i_ng),fout(i_ng)%f3d_id(if3d),'short_name',f4d(if4d)%short_name)
+              if (stat /= nf90_noerr) &
+                call shutdown(trim(nf90_strerror(stat))//' at putting attribute '//trim(f3d_name(if3d))//'.short_name')
+
+              stat = nf90_put_att(ncid(i_ng),fout(i_ng)%f3d_id(if3d),'units',f4d(if4d)%units)
+              if (stat /= nf90_noerr) &
+                call shutdown(trim(nf90_strerror(stat))//' at putting attribute '//trim(f3d_name(if3d))//'.units')
+            endif
+          enddo
         enddo
-
-        do if3d = 1,nf3d
-          dim_v = dim_lev(i_ng)
-          if4d = find_index(f3d_name(if3d),f4d%short_name)
-          if (if4d /= 0) then
-            if (trim(f4d(if4d)%vcoord) == 'interfaces') dim_v = dim_ilev(i_ng)
-          endif
-          stat = nf90_def_var(ncid(i_ng),trim(f3d_name(if3d)),nf90_float, &
-            (/dim_lon(i_ng),dim_lat(i_ng),dim_v,dim_time(i_ng)/),fout(i_ng)%f3d_id(if3d))
-        enddo
-
-        stat = nf90_enddef(ncid(i_ng))
-
-        do if3d = 1,nf3d
-          if4d = find_index(f3d_name(if3d),f4d%short_name)
-          if (if4d /= 0) then
-            stat = nf90_put_att(ncid(i_ng),fout(i_ng)%f3d_id(if3d),'long_name',f4d(if4d)%long_name)
-            stat = nf90_put_att(ncid(i_ng),fout(i_ng)%f3d_id(if3d),'short_name',f4d(if4d)%short_name)
-            stat = nf90_put_att(ncid(i_ng),fout(i_ng)%f3d_id(if3d),'units',f4d(if4d)%units)
-          endif
-        enddo
-      enddo
+      endif
 
       defined = .true.
     endif
@@ -188,6 +254,8 @@ module output_ng_module
           fout2d(-1:nlon_ng(i_ng)+2,-1:nlat_ng(i_ng)+2) = full2d(-1:nlon_ng(i_ng)+2,-1:nlat_ng(i_ng)+2,if2d)
           stat = nf90_put_var(ncid(i_ng),fout(i_ng)%f2d_id(if2d),fout2d(-1:nlon_ng(i_ng)+2,-1:nlat_ng(i_ng)+2), &
             start=(/1,1,irec(i_ng)/),count=(/nlon_ng(i_ng)+4,nlat_ng(i_ng)+4,1/))
+          if (stat /= nf90_noerr) &
+            call shutdown(trim(nf90_strerror(stat))//' at putting variable '//trim(f2d_name(if2d)))
         enddo
 
         do if3d = 1,nf3d
@@ -196,10 +264,13 @@ module output_ng_module
           enddo
           stat = nf90_put_var(ncid(i_ng),fout(i_ng)%f3d_id(if3d),fout3d(-1:nlon_ng(i_ng)+2,-1:nlat_ng(i_ng)+2,1:nlevp1_ng(i_ng)), &
             start=(/1,1,1,irec(i_ng)/),count=(/nlon_ng(i_ng)+4,nlat_ng(i_ng)+4,nlevp1_ng(i_ng),1/))
+          if (stat /= nf90_noerr) &
+            call shutdown(trim(nf90_strerror(stat))//' at putting variable '//trim(f3d_name(if3d)))
         enddo
 
 ! flush output buffer in case the program quited abnormally
         stat = nf90_sync(ncid(i_ng))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at syncing '//trim(fileout_ng(i_ng)))
 
         irec(i_ng) = irec(i_ng)+1
       endif
@@ -265,14 +336,17 @@ module output_ng_module
   subroutine finalize
 
     use params_module,only: n_ng
+    use input_module,only: fileout_ng
     use mpi_module,only: mytid
-    use netcdf,only: nf90_close
+    use netcdf,only: nf90_close,nf90_strerror,nf90_noerr
 
     integer :: i_ng,stat
+    external :: shutdown
 
     if (mytid == 0) then
       do i_ng = 1,n_ng
         stat = nf90_close(ncid(i_ng))
+        if (stat /= nf90_noerr) call shutdown(trim(nf90_strerror(stat))//' at closing '//trim(fileout_ng(i_ng)))
       enddo
     endif
 

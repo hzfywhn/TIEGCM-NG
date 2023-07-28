@@ -5,7 +5,7 @@ module char_module
 
   contains
 !-----------------------------------------------------------------------
-  function ismember(instance,group) result(flag)
+  pure function ismember(instance,group) result(flag)
 
     character(len=*),intent(in) :: instance
     character(len=*),dimension(:),intent(in) :: group
@@ -23,7 +23,7 @@ module char_module
 
   end function ismember
 !-----------------------------------------------------------------------
-  function find_index(instance,group) result(idx)
+  pure function find_index(instance,group) result(idx)
 
     character(len=*),intent(in) :: instance
     character(len=*),dimension(:),intent(in) :: group

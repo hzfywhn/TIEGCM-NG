@@ -55,8 +55,8 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
   f107te = min(f107,235.)
 
   where (abs(rlatm) >= pi/4.5) a = 1.
-  where (abs(rlatm)<pi/4.5 .and. abs(rlatm)<=pi/18) a = 0.
-  where (abs(rlatm) > pi/18) a = .5*(1.+sin(pi*(abs(rlatm)-pi/4.5)/(pi/6.)))
+  where (abs(rlatm) <= pi/18) a = 0.
+  where (abs(rlatm)>pi/18 .and. abs(rlatm)<pi/4.5) a = .5*(1.+sin(pi*(abs(rlatm)-pi/4.5)/(pi/6.)))
 
   fed = -9.0e+7*f107te*a
   fen = fed/2.

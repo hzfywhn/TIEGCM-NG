@@ -28,6 +28,7 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
     wni,uii,vii,wii,qop2pi,qop2di,qopi,hdzi,tp_op,op_bmod2,dbveldx,dbveldy,dop_bmod2dx,dop_bmod2dy, &
     exp1,exp2,tp1_0,tp1_1,dj_bz,ddj_bzdx,ddj_bzdy,divbz1,divbz2,djint_tphdz0,djint_tphdz0_1, &
     djint_tphdz1,djint_tphdz1_1,bz_bdotu,bz_bdotu_1,dvb_bz
+  logical,external :: isclose
   external :: smooth_ng,trsolv_ng
 
   tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
@@ -126,7 +127,7 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
     18.6*n2*rmassinv_n2+18.1*o2*rmassinv_o2+3.6*he*rmassinv_he
   dj = 1.42E17/(xnmbar*vni)
   vni = 16*3.53E-11*vni
-  if (opdiffcap /= 0.) dj = min(dj,opdiffcap)
+  if (isclose(opdiffcap,0.)) dj = min(dj,opdiffcap)
 
   tp = te+ti
 

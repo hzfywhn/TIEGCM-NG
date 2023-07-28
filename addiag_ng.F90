@@ -35,6 +35,7 @@ subroutine addiag_ng(vc,mbar,barm,xnmbar,xnmbari,xnmbarm,z,zg,n2,i_ng)
   latd1 = flds(i_ng)%latd1
 
   n2 = 1.-o2-o1-he
+  call addfld(n2,'N2',i_ng)
 
   do lat = latd0,latd1
     vc(:,:,lat) = cs(lat)*vn(:,:,lat)
