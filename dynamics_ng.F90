@@ -2,7 +2,7 @@ subroutine dynamics_ng(istep,i_ng)
 ! input parameters are passed through module use, output parameters are passed by subroutine calls
 
   use params_module,only: nlevp1_ng
-  use input_module,only: nstep_sub
+  use input_module,only: nstep_sub,aurora
   use fields_ng_module,only: flds,itp,itc
   implicit none
 
@@ -28,6 +28,7 @@ subroutine dynamics_ng(istep,i_ng)
     flds(i_ng)%ui, &
     flds(i_ng)%vi, &
     flds(i_ng)%wi, &
+    flds(i_ng)%Etot, &
     i_ng)
 
   call chapman_ng( &
@@ -82,13 +83,16 @@ subroutine dynamics_ng(istep,i_ng)
     flds(i_ng)%qtef, &
     i_ng)
 
-  call aurora_ng( &
+  if (aurora > 0) &
+    call aurora_ng( &
     flds(i_ng)%qteaur, &
     flds(i_ng)%qo2p, &
     flds(i_ng)%qop, &
     flds(i_ng)%qn2p, &
     flds(i_ng)%qnp, &
     flds(i_ng)%qtef, &
+    flds(i_ng)%ui, &
+    flds(i_ng)%vi, &
     i_ng)
 
   itp_sub = itp(i_ng)
@@ -131,6 +135,8 @@ subroutine dynamics_ng(istep,i_ng)
     flds(i_ng)%lam1, &
     flds(i_ng)%ped, &
     flds(i_ng)%hall, &
+    flds(i_ng)%Qa, &
+    flds(i_ng)%Q2, &
     i_ng)
 
   call comp_n2d_ng( &

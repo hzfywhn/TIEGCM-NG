@@ -1,14 +1,14 @@
-subroutine addiag_ng(vc,mbar,barm,xnmbar,xnmbari,xnmbarm,z,zg,n2,i_ng)
+subroutine addiag_ng(vc,mbar,barm,xnmbar,xnmbari,scht,schti,z,zg,n2,i_ng)
 
   use params_module,only: nlevp1_ng,glat_ng
-  use cons_module,only: rmassinv,rmassinv_he,dzgrav,p0,boltz,avo
+  use cons_module,only: rmassinv,rmassinv_he,dzgrav,gask,grav,p0,boltz
   use fields_ng_module,only: flds,itp,dz,expz,expzmid_inv
   use output_ng_module,only: addfld
   implicit none
 
   integer,intent(in) :: i_ng
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(out) :: &
-    vc,mbar,barm,xnmbar,xnmbari,xnmbarm,z,zg,n2
+    vc,mbar,barm,xnmbar,xnmbari,scht,schti,z,zg,n2
 
   real,parameter :: dgtr = 1.74533E-2
   integer :: nk,latd0,latd1,k,lat
@@ -18,7 +18,7 @@ subroutine addiag_ng(vc,mbar,barm,xnmbar,xnmbari,xnmbarm,z,zg,n2,i_ng)
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1) :: g
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: tlbc,z_lbc,barm1
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    tn,o2,o1,he,vn,tni,w1,xmas
+    tn,o2,o1,he,vn,tni,w1
 
   tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
   o2 = flds(i_ng)%o2(:,:,:,itp(i_ng))
@@ -43,9 +43,9 @@ subroutine addiag_ng(vc,mbar,barm,xnmbar,xnmbari,xnmbarm,z,zg,n2,i_ng)
 
   mbar = 1./(o2*rmassinv(1)+o1*rmassinv(2)+he*rmassinv_he+n2*rmassinv(3))
 
-  xnmbarm = p0*mbar/(boltz*tn)
+  xnmbar = p0*mbar/(boltz*tn)
   do k = 1,nk
-    xnmbarm(k,:,:) = xnmbarm(k,:,:)*expz(i_ng,k)
+    xnmbar(k,:,:) = xnmbar(k,:,:)*expz(i_ng,k)
   enddo
 
   barm1 = 1.5*mbar(1,:,:)-0.5*mbar(2,:,:)
@@ -53,8 +53,6 @@ subroutine addiag_ng(vc,mbar,barm,xnmbar,xnmbari,xnmbarm,z,zg,n2,i_ng)
     barm(k,:,:) = 0.5*(mbar(k,:,:)+mbar(k-1,:,:))
   enddo
   barm(1,:,:) = barm1
-
-  xnmbar = xnmbarm
 
   tni(1,:,:) = tlbc
   do k = 2,nk-1
@@ -69,6 +67,9 @@ subroutine addiag_ng(vc,mbar,barm,xnmbar,xnmbari,xnmbarm,z,zg,n2,i_ng)
     xnmbari(k,:,:) = xnmbari(k,:,:)*expzi(k)
   enddo
 
+  scht = gask*tn/(mbar*grav)
+  schti = gask*tni/(barm*grav)
+
   z(1,:,:) = z_lbc
   w1 = dz(i_ng)/dzgrav*tn/mbar
   do k = 1,nk-1
@@ -76,7 +77,6 @@ subroutine addiag_ng(vc,mbar,barm,xnmbar,xnmbari,xnmbarm,z,zg,n2,i_ng)
   enddo
 
 ! calczg
-  xmas = 1./(o1/16.+o2/32.+he/4.+n2/28.)/avo
   zg(1,:,:) = z(1,:,:)
   do lat = latd0,latd1
     c2 = cos(2.*dgtr*glat_ng(i_ng,lat))
@@ -84,7 +84,7 @@ subroutine addiag_ng(vc,mbar,barm,xnmbar,xnmbari,xnmbarm,z,zg,n2,i_ng)
     r0 = 2.*g0/(3.085462e-6+2.27e-9*c2)
     g(1,:) = g0*(r0/(r0+0.5*(z(1,:,lat)+z(2,:,lat))))**2
     do k = 2,nk-1
-      zg(k,:,lat) = zg(k-1,:,lat)+boltz*dz(i_ng)*tn(k-1,:,lat)/(xmas(k-1,:,lat)*g(k-1,:))
+      zg(k,:,lat) = zg(k-1,:,lat)+dz(i_ng)*scht(k-1,:,lat)*grav/g(k-1,:)
       g(k,:) = g0*(r0/(r0+0.5*(zg(k,:,lat)+z(k+1,:,lat))))**2
     enddo
   enddo

@@ -22,8 +22,8 @@ subroutine comp_no_ng(no_out,no_nm1_out,istep,i_ng)
   o2 = flds(i_ng)%o2(:,:,:,itp(i_ng))
   o1 = flds(i_ng)%o1(:,:,:,itp(i_ng))
   n2 = flds(i_ng)%n2
-  xnmbar = flds(i_ng)%xnmbarm
-  xnmbari = flds(i_ng)%xnmbari
+  xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
+  xnmbari = flds(i_ng)%xnmbari(:,:,:,itp(i_ng))
   n4s = flds(i_ng)%n4s(:,:,:,itp(i_ng))
   n2d = flds(i_ng)%n2d(:,:,:,itc(i_ng))
   o2p = flds(i_ng)%o2p(:,:,:,itp(i_ng))

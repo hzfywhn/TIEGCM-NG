@@ -1,8 +1,8 @@
 subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
 
   use params_module,only: nlevp1_ng
-  use cons_module,only: pi,rtd,evergs,rmassinv_o2,rmassinv_o1,rmassinv_n2,gask,grav,avo
-  use input_module,only: f107
+  use cons_module,only: pi,rtd,evergs,rmassinv_o2,rmassinv_o1,rmassinv_n2,avo
+  use input_module,only: f107,et
   use fields_ng_module,only: flds,itp,dipmin,dz
   implicit none
 
@@ -16,10 +16,10 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     chi,rlatm,dipmag,qteaur,a,fed,fen,fe,sindipmag
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    tn,o2,o1,n2,ne,te,ti,op,o2p,nop,mbar,barm,xnmbar,xnmbari,qji_ti,qop2p,qop2d,qo2p,qop,qn2p,qnp,qnop, &
+    tn,o2,o1,n2,ne,te,ti,op,o2p,nop,xnmbar,xnmbari,scht,schti,qji_ti,qop2p,qop2d,qo2p,qop,qn2p,qnp,qnop, &
     te_int,tn_int,o2n,o1n,n2n,root_te,root_tn,root_ne,tek0,h_mid,h_int,p_coef,q_coef,r_coef,rhs, &
     qtot,qe,q_eni,coll_en2v,loss_en2v,loss_en2,loss_eo2,loss_eo1d,loss_eo1,loss_xen,loss_en,loss_ei,loss_in, &
-    tek0_h_int,tek0_h_int_1,q_eni_i
+    tek0_h_int,tek0_h_int_1,q_eni_i,Qa,Q2
   external :: trsolv_ng
 
   tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
@@ -32,10 +32,10 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
   op = flds(i_ng)%op(:,:,:,itp(i_ng))
   o2p = flds(i_ng)%o2p(:,:,:,itp(i_ng))
   nop = flds(i_ng)%nop
-  mbar = flds(i_ng)%mbar(:,:,:,itp(i_ng))
-  barm = flds(i_ng)%barm(:,:,:,itp(i_ng))
-  xnmbar = flds(i_ng)%xnmbar
-  xnmbari = flds(i_ng)%xnmbari
+  xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
+  xnmbari = flds(i_ng)%xnmbari(:,:,:,itp(i_ng))
+  scht = flds(i_ng)%scht(:,:,:,itp(i_ng))
+  schti = flds(i_ng)%schti(:,:,:,itp(i_ng))
   qji_ti = flds(i_ng)%qji_ti
 
   chi = flds(i_ng)%chi
@@ -49,16 +49,20 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
   qn2p = flds(i_ng)%qn2p
   qnp = flds(i_ng)%qnp
   qnop = flds(i_ng)%qnop
+  Qa = flds(i_ng)%Qa
+  Q2 = flds(i_ng)%Q2
 
   nk = nlevp1_ng(i_ng)
 
   f107te = min(f107,235.)
 
-  where (abs(rlatm) >= pi/4.5) a = 1.
-  where (abs(rlatm) <= pi/18) a = 0.
-  where (abs(rlatm)>pi/18 .and. abs(rlatm)<pi/4.5) a = .5*(1.+sin(pi*(abs(rlatm)-pi/4.5)/(pi/6.)))
+  where (abs(rlatm) >= pi/4.5)
+    a = 1.
+  elsewhere
+    a = .5*(1.+sin(pi*(abs(rlatm)-pi/9.)/(pi/4.5)))
+  endwhere
 
-  fed = -9.0e+7*f107te*a
+  fed = (-5.0e+7*f107te*a-4.0e+7*f107te)*1.2
   fen = fed/2.
   fed = fed+qteaur
   fen = fen+qteaur
@@ -105,8 +109,8 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
   tek0 = 7.5e5/(1.+3.22e4*te_int**2/ne*(root_te*(2.82e-17-3.41e-21*te_int)*n2n+ &
     (2.20e-16+7.92e-18*root_te)*o2n+1.10e-16*(1.+5.7e-4*te_int)*o1n))*evergs
 
-  h_mid = gask*tn/(mbar*grav)
-  h_int = gask*tn_int/(barm*grav)
+  h_mid = scht
+  h_int = schti
 
   sindipmag = max(sin(max(abs(dipmag),dipmin(i_ng)))**2,.10)
 
@@ -156,6 +160,9 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
   qe = exp(-((((((0.00001249*qe+0.0005755)*qe+0.009346)*qe+0.059)*qe+0.04392)*qe-1.056)*qe-5.342))
 
   rhs = rhs-qe*qtot*evergs
+
+  if (et) rhs = rhs-Qa*10.0
+
   root_te = sqrt(te)
 
   where (te >= 1000.)
@@ -172,6 +179,12 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
 
   loss_en2 = n2n*(1.77E-19*(1.-1.21E-4*te)*te+2.9e-14/root_te+loss_en2v)
   loss_en = loss_en2
+
+  if (et) then
+    where (te>500.0 .and. Q2>0.0)
+      loss_en = loss_en*exp(-7.54E-4*(te-500.0))
+    endwhere
+  endif
 
   loss_eo2 = o2n*(1.21e-18*(1.+3.6e-2*root_te)*root_te+6.9e-14/root_te+3.125e-21*te**2)
   loss_en = loss_en+loss_eo2

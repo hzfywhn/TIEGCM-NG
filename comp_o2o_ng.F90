@@ -16,7 +16,7 @@ subroutine comp_o2o_ng(fs,i_ng)
 
   o1 = flds(i_ng)%o1(:,:,:,itp(i_ng))
   mbar = flds(i_ng)%mbar(:,:,:,itp(i_ng))
-  xnmbar = flds(i_ng)%xnmbar
+  xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
   op = flds(i_ng)%op(:,:,:,itp(i_ng))
   no = flds(i_ng)%no(:,:,:,itp(i_ng))
   n4s = flds(i_ng)%n4s(:,:,:,itp(i_ng))

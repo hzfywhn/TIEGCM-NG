@@ -19,7 +19,7 @@ subroutine qjnno_ng(qtotal,i_ng)
   no = flds(i_ng)%no(:,:,:,itp(i_ng))
   n4s = flds(i_ng)%n4s(:,:,:,itp(i_ng))
   n2d = flds(i_ng)%n2d(:,:,:,itc(i_ng))
-  xnmbar = flds(i_ng)%xnmbarm
+  xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
 
   beta1 = flds(i_ng)%beta1
   beta3 = flds(i_ng)%beta3
@@ -38,7 +38,7 @@ subroutine qjnno_ng(qtotal,i_ng)
   do k = 2,nk-1
     dq(k,:,:) = deltaq(k-1,:,:)*deltaq(k,:,:)
   enddo
-  dq = sqrt(max(dq,0.))
+  dq = sqrt(max(dq,1.e-20))
   dq(1,:,:) = 1.5*deltaq(1,:,:)-0.5*deltaq(2,:,:)
   dq(nk,:,:) = 1.5*deltaq(nk-1,:,:)-0.5*deltaq(nk-2,:,:)
   qtotal = qtotal+dq

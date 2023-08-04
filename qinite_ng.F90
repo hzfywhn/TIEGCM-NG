@@ -22,7 +22,7 @@ subroutine qinite_ng(qo2p,qop,qn2p,qnp,qnop,qtef,i_ng)
   he = flds(i_ng)%he(:,:,:,itp(i_ng))
   n2 = flds(i_ng)%n2
   no = flds(i_ng)%no(:,:,:,itp(i_ng))
-  xnmbari = flds(i_ng)%xnmbari
+  xnmbari = flds(i_ng)%xnmbari(:,:,:,itp(i_ng))
   vo2 = flds(i_ng)%vo2
   vo1 = flds(i_ng)%vo1
   vn2 = flds(i_ng)%vn2

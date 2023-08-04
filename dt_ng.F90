@@ -17,9 +17,9 @@ subroutine dt_ng(tn_upd,tn_nm_upd,tlbc,tlbc_nm,istep,i_ng)
   logical,dimension(4) :: is_bndry
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: t_lbc,ulbc,vlbc
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    tn,tn_nm,un,vn,o1,mbar,barm,xnmbarm,cp,kt,km,hdt,qji_tn,cool_imp,cool_exp,w_upd, &
+    tn,tn_nm,un,vn,o1,mbar,xnmbar,scht,schti,cp,kt,km,hdt,qji_tn,cool_imp,cool_exp,w_upd, &
     qtotal,rkm12,cptn,qm,total_heat,dudz,dvdz,g,f,h,rho,tni,p,q,r,rhs,qpart,tnsmooth, &
-    advec_tn,advec,recomq,cpi,kmi,wi,total_heat_a,gpart,gpart_a,p_1,r_0,qpart_a
+    advec_tn,advec,cpi,kmi,wi,total_heat_a,gpart,gpart_a,p_1,r_0,qpart_a
   external :: advec_ng,smooth_ng,trsolv_ng
 
   tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
@@ -28,8 +28,9 @@ subroutine dt_ng(tn_upd,tn_nm_upd,tlbc,tlbc_nm,istep,i_ng)
   vn = flds(i_ng)%vn(:,:,:,itp(i_ng))
   o1 = flds(i_ng)%o1(:,:,:,itp(i_ng))
   mbar = flds(i_ng)%mbar(:,:,:,itp(i_ng))
-  barm = flds(i_ng)%barm(:,:,:,itp(i_ng))
-  xnmbarm = flds(i_ng)%xnmbarm
+  xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
+  scht = flds(i_ng)%scht(:,:,:,itp(i_ng))
+  schti = flds(i_ng)%schti(:,:,:,itp(i_ng))
   cp = flds(i_ng)%cp
   kt = flds(i_ng)%kt
   km = flds(i_ng)%km
@@ -84,9 +85,7 @@ subroutine dt_ng(tn_upd,tn_nm_upd,tlbc,tlbc_nm,istep,i_ng)
 
   total_heat = total_heat+hdt
 
-  recomq = tsurplus*rkm12*(xnmbarm*o1*rmassinv_o1)**2*avo/mbar
-
-  total_heat = total_heat+recomq
+  total_heat = total_heat+tsurplus*rkm12*(xnmbar*o1*rmassinv_o1)**2*avo/mbar
 
   total_heat = total_heat+qji_tn
 
@@ -101,7 +100,7 @@ subroutine dt_ng(tn_upd,tn_nm_upd,tlbc,tlbc_nm,istep,i_ng)
   dudz(nk,:,:) = dudz(nk-1,:,:)/3.
   dvdz(nk,:,:) = dvdz(nk-1,:,:)/3.
 
-  qm = grav**2*mbar*kmi/(p0*gask*tn)*(dudz**2+dvdz**2)
+  qm = grav*kmi/(p0*scht)*(dudz**2+dvdz**2)
   do k = 1,nk
     qm(k,:,:) = qm(k,:,:)/expz(i_ng,k)
   enddo
@@ -118,14 +117,12 @@ subroutine dt_ng(tn_upd,tn_nm_upd,tlbc,tlbc_nm,istep,i_ng)
   tni(1,:,:) = tlbc
   tni(nk,:,:) = tn(nk-1,:,:)
 
-  h = gask*tni/barm
+  h = schti
 
-  rho = p0*expzmid_inv(i_ng)/h
+  rho = p0*expzmid_inv(i_ng)/(h*grav)
   do k = 1,nk
     rho(k,:,:) = rho(k,:,:)*expz(i_ng,k)
   enddo
-
-  h = h/grav
 
   gpart = h**2*rho*cp
   do k = 1,nk

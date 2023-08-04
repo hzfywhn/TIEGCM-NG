@@ -1,4 +1,4 @@
-subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,i_ng)
+subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,ui,vi,i_ng)
 
   use params_module,only: nlevp1_ng,glat_ng
   use fields_ng_module,only: flds
@@ -7,7 +7,7 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,i_ng)
   integer,intent(in) :: i_ng
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(out) :: qteaur
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(inout) :: &
-    qo2p,qop,qn2p,qnp,qtef
+    qo2p,qop,qn2p,qnp,qtef,ui,vi
 
   real,parameter :: aurlat = 30.
   integer :: latd0,latd1,latbeg,latend
@@ -57,43 +57,50 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,i_ng)
 !-----------------------------------------------------------------------
   subroutine aurora(latbeg,latend)
 
-    use cons_module,only: pi,p0,grav,gask,rmass_o2,rmass_n2,rmassinv_o2,rmassinv_o1,rmassinv_n2,avo
-    use input_module,only: iamie
+    use params_module,only: spval
+    use cons_module,only: pi,p0,grav,gask,rmass_o2,rmass_n2,rmassinv_o2,rmassinv_o1,rmassinv_n2,avo,dtr
+    use input_module,only: iamie,saps,kp
     use magfield_module,only: sunlons
     use aurora_module,only: fac_p2e,alfad,fd,alfac,fc,add_sproton,alfa_sp, &
       flx_sp,add_helectron,alfa30,e30,theta0,offa,dskofa,phid,rrad,rradp, &
-      alfa0,ralfa,ralfa2,rrote,rroth,h0,rh,e0,e20,ree,re2,alfa20
+      alfa0,ralfa,ralfa2,rrote,rroth,h0,rh,e0,e20,ree,re2,alfa20,h2deg
     use fields_ng_module,only: itp,expz
+    use gpi_module,only: fkp
+    use subaur_module,only: subaur_drift
 
     integer,intent(in) :: latbeg,latend
 
     logical,parameter :: use_cion = .false.
     real,parameter :: s5 = .08726646, s20 = .34906585, pi_cusp = 3.1415927, s10 = 0.174532925
-    integer :: nk,lond0,lond1,k,ihem
-    real :: ofda,cosofa,sinofa,aslona,p0ez
+    integer :: nk,lond0,lond1,k,ihem,i,lat
+    real :: ofda,cosofa,sinofa,aslona,p0ez,skp,vns,ves,vvs
     real,dimension(5) :: qia
     real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,latbeg:latend) :: &
       rlatm,rlonm,ekvg,efxg,dlat_aur,dlon_aur,colat,sinlat,coslat,coslon,sinlon,alon, &
       alfa,alfa2,alfa3,flux,flux2,flux3,drizl,cusp,eflux,eflux2,eflux3, &
-      coslamda,halfwidth,dtheta,clat,falfa1,falfa2,fcusp,fdrizl,falfa_sp,falfa3
+      coslamda,halfwidth,dtheta,clat,falfa1,falfa2,fcusp,fdrizl,falfa_sp,falfa3, &
+      aurbound,smlt,smlat,sndec,csdec,sui,svi,swi
     real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,latbeg:latend) :: &
-      tn,o2,o1,n2,mbar,barm,xnmbarm,xalfa1,xalfa2,xcusp,xdrizl,xalfa_sp,xalfa3, &
+      tn,o2,o1,n2,barm,xnmbar,scht,xalfa1,xalfa2,xcusp,xdrizl,xalfa_sp,xalfa3, &
       flux1_ion,flux2_ion,cusp_ion,drizl_ion,alfa1_ion,alfa2_ion,alfa3_ion,alfasp_bion, &
       barm_t,qsum,denom,p0ez_mbar,tk_mbar,qo2p_aur,qop_aur,qn2p_aur,qaurora, &
       falfa3_alfa3_ion,falfa_sp_alfasp_bion,qo2p_aur_a,qop_aur_a,qn2p_aur_a
+    logical,external :: isclose
 
     tn = flds(i_ng)%tn(:,:,latbeg:latend,itp(i_ng))
     o2 = flds(i_ng)%o2(:,:,latbeg:latend,itp(i_ng))
     o1 = flds(i_ng)%o1(:,:,latbeg:latend,itp(i_ng))
     n2 = flds(i_ng)%n2(:,:,latbeg:latend)
-    mbar = flds(i_ng)%mbar(:,:,latbeg:latend,itp(i_ng))
     barm = flds(i_ng)%barm(:,:,latbeg:latend,itp(i_ng))
-    xnmbarm = flds(i_ng)%xnmbarm(:,:,latbeg:latend)
+    xnmbar = flds(i_ng)%xnmbar(:,:,latbeg:latend,itp(i_ng))
+    scht = flds(i_ng)%scht(:,:,latbeg:latend,itp(i_ng))
 
     rlatm = flds(i_ng)%rlatm(:,latbeg:latend)
     rlonm = flds(i_ng)%rlonm(:,latbeg:latend)
     ekvg = flds(i_ng)%ekvg(:,latbeg:latend)
     efxg = flds(i_ng)%efxg(:,latbeg:latend)
+    sndec = flds(i_ng)%sndec(:,latbeg:latend)
+    csdec = flds(i_ng)%csdec(:,latbeg:latend)
 
     nk = nlevp1_ng(i_ng)
     lond0 = flds(i_ng)%lond0
@@ -112,7 +119,7 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,i_ng)
     sinlon = sin(dlon_aur+aslona)
     coslon = cos(dlon_aur+aslona)
     colat = acos(cosofa*sinlat-sinofa*coslat*coslon)
-    alon = mod(atan2(sinlon*coslat,sinlat*sinofa+cosofa*coslat*coslon)-aslona+pi,pi*2.)
+    alon = mod(atan2(sinlon*coslat,sinlat*sinofa+cosofa*coslat*coslon)-aslona+3.*pi,pi*2.)-pi
 
 ! aurora_cusp
     cusp = (exp(-((theta0(ihem)-colat)/s5)**2)+exp(-((pi_cusp-theta0(ihem)-colat)/s5)**2))* &
@@ -122,6 +129,8 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,i_ng)
     coslamda = cos(atan2(sin(alon-rrote),cos(alon-rrote)))
     halfwidth = h0*(1.-rh*cos(atan2(sin(alon-rroth),cos(alon-rroth))))
     dtheta = colat-rrad(ihem)
+
+    aurbound = rrad(ihem)+halfwidth
 
     alfa = alfa0*(1.-ralfa*coslamda)
     eflux = e0*(1.-ree*coslamda)*exp(-(dtheta/halfwidth)**2)
@@ -148,6 +157,44 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,i_ng)
       flux2 = e20*(1.-re2*coslamda)*exp(-((clat-rrad(ihem))/halfwidth)**2)/(alfa2*fac_p2e)
     endif
 
+    if (iamie == 0) then
+      smlt = modulo(12.+alon/(dtr*h2deg),24.)
+    else
+      smlt = modulo(12.+dlon_aur/(dtr*h2deg),24.)
+    endif
+! SAPS mlat is the same with/without AMIE, this is different from the global aurora module
+    smlat = (colat-aurbound)/dtr
+    if (isclose(kp,spval)) then
+      skp = fkp
+    else
+      skp = kp
+    endif
+    sui = 0.
+    svi = 0.
+    swi = 0.
+    if (saps .and. skp>=1. .and. skp<=9) then
+      do i = lond0,lond1
+        do lat = latbeg,latend
+          if (smlat(i,lat)>0. .and. smlat(i,lat)<10.) then
+            call subaur_drift(smlat(i,lat),smlt(i,lat),skp,vns,ves,vvs)
+            if (ihem == 1) then
+              sui(i,lat) = -ves*csdec(i,lat) - vns*sndec(i,lat)
+              svi(i,lat) = ves*sndec(i,lat) - vns*csdec(i,lat)
+            endif
+            if (ihem == 2) then
+              sui(i,lat) = -ves*csdec(i,lat) + vns*sndec(i,lat)
+              svi(i,lat) = ves*sndec(i,lat) + vns*csdec(i,lat)
+            endif
+            swi(i,lat) = vvs
+          endif
+        enddo
+      enddo
+      do k = 1,nk
+        ui(k,:,latbeg:latend) = ui(k,:,latbeg:latend)+sui*100.
+        vi(k,:,latbeg:latend) = vi(k,:,latbeg:latend)+svi*100.
+      enddo
+    endif
+
 ! aurora_ions
     qia = 0.
 
@@ -160,7 +207,7 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,i_ng)
       xdrizl(k,:,:) = p0ez/alfad
     enddo
 
-    p0ez_mbar = xnmbarm/avo
+    p0ez_mbar = xnmbar/avo
     tk_mbar = gask*tn/(grav*barm)*p0ez_mbar
     xalfa_sp = (tk_mbar/0.00271)**0.58140/alfa_sp
 
@@ -191,7 +238,7 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,i_ng)
     fdrizl = drizl*alfad*fd
     falfa3 = alfa3*flux3
 
-    barm_t = grav*mbar/(35.e-3*gask*tn)
+    barm_t = 1./(35.e-3*scht)
     do k = 1,nk
       falfa_sp = drizl*p0ez_mbar(k,:,:)*flx_sp*1.e6/(tk_mbar(k,:,:)*35.)
       qsum(k,:,:) = falfa1*alfa1_ion(k,:,:)+falfa2*alfa2_ion(k,:,:)+fcusp*cusp_ion(k,:,:)+fdrizl*drizl_ion(k,:,:)

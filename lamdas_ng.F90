@@ -1,29 +1,30 @@
-subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,i_ng)
+subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
 
   use params_module,only: nlevp1_ng
-  use cons_module,only: rmassinv_o2,rmassinv_o1,rmassinv_n2,avo
+  use cons_module,only: rmassinv_o2,rmassinv_o1,rmassinv_n2,rmass_o2,rmass_o1,avo,rtd
   use input_module,only: colfac
   use fields_ng_module,only: flds,itp,dipmin
   implicit none
 
   integer,intent(in) :: i_ng
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(out) :: &
-    lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out
+    lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2
 
   real,parameter :: qe = 1.602e-19, qeomeo10 = 1.7588028E7, qeoNao10 = 9.6489E3, rmass_nop = 30., &
     rmassinv_nop = 1./rmass_nop, rnu_op_o2 = 6.64E-10, rnu_nop_o2 = 4.27E-10, rnu_o2p_o = 2.31E-10, &
-    rnu_nop_o = 2.44E-10, rnu_o2p_n2 = 4.13E-10, rnu_op_n2 = 6.82E-10, rnu_nop_n2 = 4.34E-10
+    rnu_nop_o = 2.44E-10, rnu_o2p_n2 = 4.13E-10, rnu_op_n2 = 6.82E-10, rnu_nop_n2 = 4.34E-10, &
+    Me = 9.109E-31, Mp = 1.6726E-27, Kb = 1.38E-23
   integer :: nk,k
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     bmod2,sn2dec,csdec,sndec,dipmag,qe_fac,sindip,cosdip,cos2dip,sin2dip,cos2dec, &
-    omega_o2p,omega_op,omega_nop,omega_o2p_inv,omega_op_inv,omega_nop_inv,omega_e,omega_e_inv,dip
+    omega_o2p,omega_op,omega_nop,omega_o2p_inv,omega_op_inv,omega_nop_inv,omega_e,omega_e_inv,dip,rlatm
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     tn,xnmbar,o2,o1,n2,ti,te,o2p,op,nop,tnti,o2_cm3,o1_cm3,n2_cm3,sigma_ped,sigma_hall, &
     ne,lamda2,lamda1tmp,lamda2tmp,lxxnorot,lyynorot,lxynorot,lyxnorot, &
-    rnu_o2p_o2,rnu_op_o,rnu_o2p,rnu_op,rnu_nop,rnu_ne,sqrt_te
+    rnu_o2p_o2,rnu_op_o,rnu_o2p,rnu_op,rnu_nop,rnu_ne,sqrt_te,Etot,Ki,Mi,E1,Q1
 
   tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
-  xnmbar = flds(i_ng)%xnmbar
+  xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
   o2 = flds(i_ng)%o2(:,:,:,itp(i_ng))
   o1 = flds(i_ng)%o1(:,:,:,itp(i_ng))
   n2 = flds(i_ng)%n2
@@ -32,12 +33,14 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,i_ng)
   o2p = flds(i_ng)%o2p(:,:,:,itp(i_ng))
   op = flds(i_ng)%op(:,:,:,itp(i_ng))
   nop = flds(i_ng)%nop
+  Etot = flds(i_ng)%Etot
 
   bmod2 = flds(i_ng)%bmod2
   sn2dec = flds(i_ng)%sn2dec
   csdec = flds(i_ng)%csdec
   sndec = flds(i_ng)%sndec
   dipmag = flds(i_ng)%dipmag
+  rlatm = flds(i_ng)%rlatm
 
   nk = nlevp1_ng(i_ng)
 
@@ -85,11 +88,11 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,i_ng)
 
   sigma_ped = op*rnu_op/(1.+rnu_op**2)+o2p*rnu_o2p/(1.+rnu_o2p**2)+nop*rnu_nop/(1.+rnu_nop**2)+ne*rnu_ne/(1.+rnu_ne**2)
   sigma_hall = ne/(1.+rnu_ne**2)-op/(1.+rnu_op**2)-o2p/(1.+rnu_o2p**2)-nop/(1.+rnu_nop**2)
-  where (sigma_hall < 1e-20) sigma_hall = 1e-20
   do k = 1,nk
     sigma_ped(k,:,:) = sigma_ped(k,:,:)*qe_fac
     sigma_hall(k,:,:) = sigma_hall(k,:,:)*qe_fac
   enddo
+  sigma_hall = max(sigma_hall,1e-20)
 
   lamda1tmp = sigma_ped*avo/(1.e3*xnmbar)
   lamda2tmp = sigma_hall*avo/(1.e3*xnmbar)
@@ -123,5 +126,32 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,i_ng)
 
   ped_out = sigma_ped
   hall_out = sigma_hall
+
+  Ki = 1/ne*(op/rnu_op+o2p/rnu_o2p+nop/rnu_nop)
+  Mi = 1/ne*(op*rmass_o1+o2p*rmass_o2+nop*rmass_nop)
+
+  E1 = (1.0+rnu_ne/Ki)*sqrt(Kb*(1.0+Ki**2)/(1.0-Ki**2)*(te+ti)/(Mi*Mp))
+  do k = 1,nk
+    E1(k,:,:) = E1(k,:,:)*bmod2*1E-4
+  enddo
+
+  Q1 = Me*rnu_ne*ne*1E6*Etot**2
+  Q2 = Mi*Mp*1E6*Ki**2*(Etot-E1)**2/(1.0+Ki**2)*(Etot/E1*(1.0+rnu_ne/Ki)-1.0)
+  do k = 1,nk
+    Q1(k,:,:) = Q1(k,:,:)/(omega_e_inv*(bmod2*1E-4)**2)
+    Q2(k,:,:) = Q2(k,:,:)/(bmod2*1E-4)**2* &
+      (op(k,:,:)*rnu_op(k,:,:)/omega_op_inv+ &
+      o2p(k,:,:)*rnu_o2p(k,:,:)/omega_o2p_inv+ &
+      nop(k,:,:)*rnu_nop(k,:,:)/omega_nop_inv)
+  enddo
+  Qa = Q1+Q2
+
+  do k = 1,nk
+    where (abs(rlatm)*rtd<50.0 .or. Ki(k,:,:)>1.0 .or. Etot(k,:,:)<=E1(k,:,:))
+      Q1(k,:,:) = 0.0
+      Q2(k,:,:) = 0.0
+      Qa(k,:,:) = 0.0
+    endwhere
+  enddo
 
 end subroutine lamdas_ng

@@ -31,7 +31,7 @@ subroutine qrj_ng(rj,qtef,qtotal,qop2p,qop2d,qo2p,qop,qn2p,qnp,qnop,i_ng)
   o1 = flds(i_ng)%o1(:,:,:,itp(i_ng))
   he = flds(i_ng)%he(:,:,:,itp(i_ng))
   n2 = flds(i_ng)%n2
-  xnmbari = flds(i_ng)%xnmbari
+  xnmbari = flds(i_ng)%xnmbari(:,:,:,itp(i_ng))
 
   beta9 = flds(i_ng)%beta9
 
@@ -51,7 +51,7 @@ subroutine qrj_ng(rj,qtef,qtotal,qop2p,qop2d,qo2p,qop,qn2p,qnp,qnop,i_ng)
   o2i(1,:,:) = .5*((b(1,1)+1.)*o2(1,:,:)+b(1,2)*o1(1,:,:)+b(1,3)*he(1,:,:)+fb(1))
   o1i(1,:,:) = .5*(b(2,1)*o2(1,:,:)+(b(2,2)+1.)*o1(1,:,:)+b(2,3)*he(1,:,:)+fb(2))
   hei(1,:,:) = .5*(b(3,1)*o2(1,:,:)+b(3,2)*o1(1,:,:)+(b(3,3)+1.)*he(1,:,:)+fb(3))
-  n4si(1,:,:) = 0.
+
   n2i(1,:,:) = 1.-o2i(1,:,:)-o1i(1,:,:)-hei(1,:,:)
 
   mn_o2 = o2i*rmassinv_o2
@@ -97,9 +97,7 @@ subroutine qrj_ng(rj,qtef,qtotal,qop2p,qop2d,qo2p,qop,qn2p,qnp,qnop,i_ng)
     qtotal = qtotal+hc*rlmeuvinv(l)*sum1*sum2
   enddo
 
-  do k = 1,nk
-    qtotal(k,:,:) = qtotal(k,:,:)*euveff*avo
-  enddo
+  qtotal = qtotal*euveff*avo
 
   mn_o2 = mn_o2*xnmbari
   mn_n2 = mn_n2*xnmbari

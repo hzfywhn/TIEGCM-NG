@@ -24,9 +24,10 @@ module fields_ng_module
     real,dimension(:,:),pointer :: t_lbc,u_lbc,v_lbc,z_lbc,flx_he,ekvg,efxg
     real,dimension(:,:,:),pointer :: ex,ey,ez
     real,dimension(:,:,:,:),pointer :: &
-      tn,    un,    vn,    o2,    o1,    n4s,   no,    he,    ar,    op,    n2d,   &
-      ti,    te,    ne,    o2p,   w,     z,     poten, tn_nm, un_nm, vn_nm, o2_nm, &
-      o1_nm, n4s_nm,no_nm, op_nm, he_nm, ar_nm, barm,  vc,    mbar
+      tn,     un,     vn,     o2,     o1,     he,     op,     n4s,    no,     ar,     &
+      ti,     te,     ne,     w,      n2d,    o2p,    z,      poten,  tn_nm,  un_nm,  &
+      vn_nm,  o2_nm,  o1_nm,  he_nm,  op_nm,  n4s_nm, no_nm,  ar_nm,  mbar,   barm,   &
+      xnmbar, xnmbari,scht,   schti,  vc
     type(fields_2d),dimension(nf2din) :: f2din
     type(fields_3d),dimension(nf3din) :: f3din
     type(fields_4d),dimension(nf4d) :: f4d
@@ -46,15 +47,15 @@ module fields_ng_module
 ! auxiliary fields
     real,dimension(:,:),allocatable :: tlbc,ulbc,vlbc,tlbc_nm,ulbc_nm,vlbc_nm,qteaur,chi
     real,dimension(:,:,:),allocatable :: &
-      kldt,   kldu,   kldv,   kldo2,  kldo1,  kldhe,  xnmbar, xnmbari,xnmbarm, &
-      cp,     kt,     km,     ui,     vi,     wi,     vo2,    vo1,    vn2,     &
-      sco2,   sco1,   scn2,   xiop2p, xiop2d, nplus,  n2p,    nop,    lxx,     &
-      lyy,    lxy,    lyx,    qji_ti, qji_tn, cool_implicit,  cool_explicit,   &
-      hdt,    hdu,    hdv,    hdo2,   hdo1,   hdhe,   ped,    hall,   lam1,    &
-      zg,     n2,     wn,     Fe,     Fn,     fnrh,   fkmh,   rk1,    rk2,     &
-      rk3,    ra1,    ra2,    ra3,    beta1,  beta3,  beta5,  beta8,  beta9,   &
-      beta9n, beta17, rk19,   rk20,   rk25,   rkm12,  rj,     qtef,   qtotal,  &
-      qop2p,  qop2d,  qo2p,   qop,    qn2p,   qnp,    qnop
+      kldt,   kldu,   kldv,   kldo2,  kldo1,  kldhe,  cp,     kt,     km,     &
+      ui,     vi,     wi,     vo2,    vo1,    vn2,    sco2,   sco1,   scn2,   &
+      xiop2p, xiop2d, nplus,  n2p,    nop,    lxx,    lyy,    lxy,    lyx,    &
+      qji_ti, qji_tn, cool_implicit,  cool_explicit,  hdt,    hdu,    hdv,    &
+      hdo2,   hdo1,   hdhe,   ped,    hall,   lam1,   zg,     n2,     wn,     &
+      Fe,     Fn,     Etot,   Qa,     Q2,     fnrh,   fkmh,   &
+      rk1,    rk2,    rk3,    ra1,    ra2,    ra3,    beta1,  beta3,  beta5,  &
+      beta8,  beta9,  beta9n, beta17, rk19,   rk20,   rk25,   rkm12,  rj,     &
+      qtef,   qtotal, qop2p,  qop2d,  qo2p,   qop,    qn2p,   qnp,    qnop
     real,dimension(:,:,:,:,:),allocatable :: fs
   end type fields
 
@@ -81,30 +82,30 @@ module fields_ng_module
 
 ! fmap defines the fields to be mapped out
   character(len=*),dimension(*),parameter :: fmap = &
-    (/'TN    ','UN    ','VN    ','O2    ','O1    ','N4S   ', &
-      'NO    ','HE    ','AR    ','OP    ','N2D   ','TI    ', &
-      'TE    ','NE    ','O2P   ','OMEGA ','Z     ','TN_NM ', &
-      'UN_NM ','VN_NM ','O2_NM ','O1_NM ','N4S_NM','NO_NM ', &
-      'OP_NM ','HE_NM ','AR_NM '/)
+    (/'TN    ','UN    ','VN    ','O2    ','O1    ','HE    ', &
+      'OP    ','N4S   ','NO    ','AR    ','TI    ','TE    ', &
+      'NE    ','OMEGA ','N2D   ','O2P   ','Z     ','TN_NM ', &
+      'UN_NM ','VN_NM ','O2_NM ','O1_NM ','HE_NM ','OP_NM ', &
+      'N4S_NM','NO_NM ','AR_NM '/)
 
 ! bndry defines the fields to be mapped in (lateral boundaries)
   character(len=*),dimension(*),parameter :: bndry = &
-    (/'TN   ','UN   ','VN   ','O2   ','O1   ','N4S  ', &
-      'NO   ','HE   ','AR   ','OP   ','OMEGA'/)
+    (/'TN   ','UN   ','VN   ','O2   ','O1   ','HE   ', &
+      'OP   ','N4S  ','NO   ','AR   ','OMEGA'/)
 
   integer,parameter :: nmap = size(fmap), nbnd = size(bndry)
 
 ! ubfill indicates the following fields have filling values at the uppermost level
   character(len=*),dimension(*),parameter :: ubfill = &
-    (/'TN   ','UN   ','VN   ','OP   ','N2D  ','TI   ', &
-      'TE   ','O2P  ','TN_NM','UN_NM','VN_NM','OP_NM'/)
+    (/'TN   ','UN   ','VN   ','OP   ','TI   ','TE   ', &
+      'N2D  ','O2P  ','TN_NM','UN_NM','VN_NM','OP_NM'/)
 
 ! zlog indicates the following fields should be log-interpolated in z axis
   character(len=*),dimension(*),parameter :: zlog = &
-    (/'TN    ','O2    ','O1    ','N4S   ','NO    ','HE    ', &
-      'AR    ','OP    ','N2D   ','TI    ','TE    ','NE    ', &
-      'O2P   ','Z     ','TN_NM ','O2_NM ','O1_NM ','N4S_NM', &
-      'NO_NM ','OP_NM ','HE_NM ','AR_NM '/)
+    (/'TN    ','O2    ','O1    ','HE    ','OP    ','N4S   ', &
+      'NO    ','AR    ','TI    ','TE    ','NE    ','N2D   ', &
+      'O2P   ','Z     ','TN_NM ','O2_NM ','O1_NM ','HE_NM ', &
+      'OP_NM ','N4S_NM','NO_NM ','AR_NM '/)
 
   contains
 !-----------------------------------------------------------------------
@@ -226,17 +227,17 @@ module fields_ng_module
       allocate(flds(i_ng)%vn(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%o2(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%o1(nk,lond0:lond1,latd0:latd1,2))
+      allocate(flds(i_ng)%he(nk,lond0:lond1,latd0:latd1,2))
+      allocate(flds(i_ng)%op(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%n4s(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%no(nk,lond0:lond1,latd0:latd1,2))
-      allocate(flds(i_ng)%he(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%ar(nk,lond0:lond1,latd0:latd1,2))
-      allocate(flds(i_ng)%op(nk,lond0:lond1,latd0:latd1,2))
-      allocate(flds(i_ng)%n2d(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%ti(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%te(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%ne(nk,lond0:lond1,latd0:latd1,2))
-      allocate(flds(i_ng)%o2p(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%w(nk,lond0:lond1,latd0:latd1,2))
+      allocate(flds(i_ng)%n2d(nk,lond0:lond1,latd0:latd1,2))
+      allocate(flds(i_ng)%o2p(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%z(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%poten(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%tn_nm(nk,lond0:lond1,latd0:latd1,2))
@@ -244,31 +245,35 @@ module fields_ng_module
       allocate(flds(i_ng)%vn_nm(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%o2_nm(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%o1_nm(nk,lond0:lond1,latd0:latd1,2))
+      allocate(flds(i_ng)%he_nm(nk,lond0:lond1,latd0:latd1,2))
+      allocate(flds(i_ng)%op_nm(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%n4s_nm(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%no_nm(nk,lond0:lond1,latd0:latd1,2))
-      allocate(flds(i_ng)%op_nm(nk,lond0:lond1,latd0:latd1,2))
-      allocate(flds(i_ng)%he_nm(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%ar_nm(nk,lond0:lond1,latd0:latd1,2))
-      allocate(flds(i_ng)%barm(nk,lond0:lond1,latd0:latd1,2))
-      allocate(flds(i_ng)%vc(nk,lond0:lond1,latd0:latd1,2))
       allocate(flds(i_ng)%mbar(nk,lond0:lond1,latd0:latd1,2))
+      allocate(flds(i_ng)%barm(nk,lond0:lond1,latd0:latd1,2))
+      allocate(flds(i_ng)%xnmbar(nk,lond0:lond1,latd0:latd1,2))
+      allocate(flds(i_ng)%xnmbari(nk,lond0:lond1,latd0:latd1,2))
+      allocate(flds(i_ng)%scht(nk,lond0:lond1,latd0:latd1,2))
+      allocate(flds(i_ng)%schti(nk,lond0:lond1,latd0:latd1,2))
+      allocate(flds(i_ng)%vc(nk,lond0:lond1,latd0:latd1,2))
 
       flds(i_ng)%f4d(1)%data => flds(i_ng)%tn
       flds(i_ng)%f4d(2)%data => flds(i_ng)%un
       flds(i_ng)%f4d(3)%data => flds(i_ng)%vn
       flds(i_ng)%f4d(4)%data => flds(i_ng)%o2
       flds(i_ng)%f4d(5)%data => flds(i_ng)%o1
-      flds(i_ng)%f4d(6)%data => flds(i_ng)%n4s
-      flds(i_ng)%f4d(7)%data => flds(i_ng)%no
-      flds(i_ng)%f4d(8)%data => flds(i_ng)%he
-      flds(i_ng)%f4d(9)%data => flds(i_ng)%ar
-      flds(i_ng)%f4d(10)%data => flds(i_ng)%op
-      flds(i_ng)%f4d(11)%data => flds(i_ng)%n2d
-      flds(i_ng)%f4d(12)%data => flds(i_ng)%ti
-      flds(i_ng)%f4d(13)%data => flds(i_ng)%te
-      flds(i_ng)%f4d(14)%data => flds(i_ng)%ne
-      flds(i_ng)%f4d(15)%data => flds(i_ng)%o2p
-      flds(i_ng)%f4d(16)%data => flds(i_ng)%w
+      flds(i_ng)%f4d(6)%data => flds(i_ng)%he
+      flds(i_ng)%f4d(7)%data => flds(i_ng)%op
+      flds(i_ng)%f4d(8)%data => flds(i_ng)%n4s
+      flds(i_ng)%f4d(9)%data => flds(i_ng)%no
+      flds(i_ng)%f4d(10)%data => flds(i_ng)%ar
+      flds(i_ng)%f4d(11)%data => flds(i_ng)%ti
+      flds(i_ng)%f4d(12)%data => flds(i_ng)%te
+      flds(i_ng)%f4d(13)%data => flds(i_ng)%ne
+      flds(i_ng)%f4d(14)%data => flds(i_ng)%w
+      flds(i_ng)%f4d(15)%data => flds(i_ng)%n2d
+      flds(i_ng)%f4d(16)%data => flds(i_ng)%o2p
       flds(i_ng)%f4d(17)%data => flds(i_ng)%z
       flds(i_ng)%f4d(18)%data => flds(i_ng)%poten
       flds(i_ng)%f4d(19)%data => flds(i_ng)%tn_nm
@@ -276,14 +281,18 @@ module fields_ng_module
       flds(i_ng)%f4d(21)%data => flds(i_ng)%vn_nm
       flds(i_ng)%f4d(22)%data => flds(i_ng)%o2_nm
       flds(i_ng)%f4d(23)%data => flds(i_ng)%o1_nm
-      flds(i_ng)%f4d(24)%data => flds(i_ng)%n4s_nm
-      flds(i_ng)%f4d(25)%data => flds(i_ng)%no_nm
-      flds(i_ng)%f4d(26)%data => flds(i_ng)%op_nm
-      flds(i_ng)%f4d(27)%data => flds(i_ng)%he_nm
+      flds(i_ng)%f4d(24)%data => flds(i_ng)%he_nm
+      flds(i_ng)%f4d(25)%data => flds(i_ng)%op_nm
+      flds(i_ng)%f4d(26)%data => flds(i_ng)%n4s_nm
+      flds(i_ng)%f4d(27)%data => flds(i_ng)%no_nm
       flds(i_ng)%f4d(28)%data => flds(i_ng)%ar_nm
-      flds(i_ng)%f4d(29)%data => flds(i_ng)%barm
-      flds(i_ng)%f4d(30)%data => flds(i_ng)%vc
-      flds(i_ng)%f4d(31)%data => flds(i_ng)%mbar
+      flds(i_ng)%f4d(29)%data => flds(i_ng)%mbar
+      flds(i_ng)%f4d(30)%data => flds(i_ng)%barm
+      flds(i_ng)%f4d(31)%data => flds(i_ng)%xnmbar
+      flds(i_ng)%f4d(32)%data => flds(i_ng)%xnmbari
+      flds(i_ng)%f4d(33)%data => flds(i_ng)%scht
+      flds(i_ng)%f4d(34)%data => flds(i_ng)%schti
+      flds(i_ng)%f4d(35)%data => flds(i_ng)%vc
 
       allocate(flds(i_ng)%f2d_save(lond0:lond1,latd0:latd1,0:nstep_ng(i_ng),nf2din))
       allocate(flds(i_ng)%f3d_save(nk,lond0:lond1,latd0:latd1,0:nstep_ng(i_ng),nf3din))
@@ -313,9 +322,6 @@ module fields_ng_module
       allocate(flds(i_ng)%kldo2(nk,lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%kldo1(nk,lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%kldhe(nk,lond0:lond1,latd0:latd1))
-      allocate(flds(i_ng)%xnmbar(nk,lond0:lond1,latd0:latd1))
-      allocate(flds(i_ng)%xnmbari(nk,lond0:lond1,latd0:latd1))
-      allocate(flds(i_ng)%xnmbarm(nk,lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%cp(nk,lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%kt(nk,lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%km(nk,lond0:lond1,latd0:latd1))
@@ -355,6 +361,9 @@ module fields_ng_module
       allocate(flds(i_ng)%wn(nk,lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%Fe(nk,lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%Fn(nk,lond0:lond1,latd0:latd1))
+      allocate(flds(i_ng)%Etot(nk,lond0:lond1,latd0:latd1))
+      allocate(flds(i_ng)%Qa(nk,lond0:lond1,latd0:latd1))
+      allocate(flds(i_ng)%Q2(nk,lond0:lond1,latd0:latd1))
 
       allocate(flds(i_ng)%fnrh(nk,lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%fkmh(nk,lond0:lond1,latd0:latd1))

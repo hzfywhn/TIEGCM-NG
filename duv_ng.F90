@@ -2,7 +2,7 @@ subroutine duv_ng(un_upd,unm_upd,vn_upd,vnm_upd,ulbc,vlbc,ulbc_nm,vlbc_nm,istep,
 
   use params_module,only: nlevp1_ng,nlon_ng,nlat_ng
   use init_module,only: iday
-  use cons_module,only: p0,gask,grav,re,dtsmooth_div2,dtsmooth,dzgrav,re_inv
+  use cons_module,only: p0,grav,re,dtsmooth_div2,dtsmooth,dzgrav,re_inv
   use fields_ng_module,only: flds,itp,itc,shapiro,dtx2inv,dlamda,dphi,dz,expz,xmue,bndry
   use char_module,only: find_index
   implicit none
@@ -20,7 +20,7 @@ subroutine duv_ng(un_upd,unm_upd,vn_upd,vnm_upd,ulbc,vlbc,ulbc_nm,vlbc_nm,istep,
   real,dimension(flds(i_ng)%latd0:flds(i_ng)%latd1) :: cor,tanphi,racs
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: u_lbc,v_lbc,tlbc_nm
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    tn,tn_upd,tn_nm,un,vn,un_nm,vn_nm,w_upd,mbar,barm,z,hdu,hdv,ui,vi,lxx,lyy,lxy,lyx,km,Fe,Fn, &
+    tn,tn_upd,tn_nm,un,vn,un_nm,vn_nm,w_upd,mbar,scht,schti,z,hdu,hdv,ui,vi,lxx,lyy,lxy,lyx,km,Fe,Fn, &
     g,dwdz,tni,advec_un,advec_vn,zl,zp,unm_smooth,vnm_smooth,eddyvisc,ss_un,ss_vn, &
     ztmp,tbar,dztbar,lxxi,lyyi,lxyi,lyxi,uii,vii,uni,vni,wi,g_1,qq_a
   real,dimension(2,nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: ss,xx,yy
@@ -36,7 +36,8 @@ subroutine duv_ng(un_upd,unm_upd,vn_upd,vnm_upd,ulbc,vlbc,ulbc_nm,vlbc_nm,istep,
   vn_nm = flds(i_ng)%vn_nm(:,:,:,itp(i_ng))
   w_upd = flds(i_ng)%w(:,:,:,itc(i_ng))
   mbar = flds(i_ng)%mbar(:,:,:,itp(i_ng))
-  barm = flds(i_ng)%barm(:,:,:,itp(i_ng))
+  scht = flds(i_ng)%scht(:,:,:,itp(i_ng))
+  schti = flds(i_ng)%schti(:,:,:,itp(i_ng))
   z = flds(i_ng)%z(:,:,:,itp(i_ng))
   hdu = flds(i_ng)%hdu
   hdv = flds(i_ng)%hdv
@@ -140,7 +141,7 @@ subroutine duv_ng(un_upd,unm_upd,vn_upd,vnm_upd,ulbc,vlbc,ulbc_nm,vlbc_nm,istep,
   tni(1,:,:) = tlbc_nm
   tni(nk,:,:) = tn(nk-1,:,:)
 
-  eddyvisc = p0*gask*tn/(mbar*grav**2)
+  eddyvisc = p0*scht/grav
   do k = 1,nk-1
     eddyvisc(k,:,:) = eddyvisc(k,:,:)*expz(i_ng,k)*xmue(i_ng,k,iday)
   enddo
@@ -151,7 +152,7 @@ subroutine duv_ng(un_upd,unm_upd,vn_upd,vnm_upd,ulbc,vlbc,ulbc_nm,vlbc_nm,istep,
   enddo
   eddyvisc(1,:,:) = eddyvisc(1,:,:)**2/eddyvisc(2,:,:)
 
-  g = grav**2*(km+eddyvisc)*barm/(p0*gask*tni*dz(i_ng)**2)
+  g = grav*(km+eddyvisc)/(p0*schti*dz(i_ng)**2)
 
   dwdz = wi/(2.*dz(i_ng))
   do k = 1,nk

@@ -13,10 +13,10 @@ subroutine elden_ng(nplus,n2p,nop,o2p,electrons,i_ng)
   real,parameter :: err = 1.e-300
   integer :: nk,k
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    xnmbarm,op,op_upd,o2,o1,n2,n2d,no,n4s,xiop2p,xiop2d,rk1,rk2,rk3,beta9,ra1,ra2,ra3,qnp,qnop,qo2p,qn2p, &
+    xnmbar,op,op_upd,o2,o1,n2,n2d,no,n4s,xiop2p,xiop2d,rk1,rk2,rk3,beta9,ra1,ra2,ra3,qnp,qnop,qo2p,qn2p, &
     a0,a1,a2,a3,a4,a,b,c,d,e,fg,h,root,w1,w2,w3,qnpi,qnopi,beta9i,qo2pi,qn2pi
 
-  xnmbarm = flds(i_ng)%xnmbarm
+  xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
   op = flds(i_ng)%op(:,:,:,itp(i_ng))
   op_upd = flds(i_ng)%op(:,:,:,itc(i_ng))
   o2 = flds(i_ng)%o2(:,:,:,itp(i_ng))
@@ -55,15 +55,15 @@ subroutine elden_ng(nplus,n2p,nop,o2p,electrons,i_ng)
   qo2pi(nk,:,:) = 1.5*qo2p(nk,:,:)-.5*qo2p(nk-1,:,:)
   qn2pi(nk,:,:) = 1.5*qn2p(nk,:,:)-.5*qn2p(nk-1,:,:)
 
-  nplus = (qnpi+rk10*op*n2d*xnmbarm*rmassinv_n2d)/(xnmbarm*((rk6+rk7)*o2*rmassinv_o2+rk8*o1*rmassinv_o1))
+  nplus = (qnpi+rk10*op*n2d*xnmbar*rmassinv_n2d)/(xnmbar*((rk6+rk7)*o2*rmassinv_o2+rk8*o1*rmassinv_o1))
 
-  a = qnopi+xnmbarm*(rk2*op_upd*n2*rmassinv_n2+rk7*nplus*o2*rmassinv_o2+beta9i*no*rmassinv_no)
-  b = qo2pi+xnmbarm*(rk1*op_upd+rk6*nplus)*o2*rmassinv_o2+rk26*xiop2d*o2*rmassinv_o2
-  c = xnmbarm*(rk4*n4s*rmassinv_n4s+rk5*no*rmassinv_no)
+  a = qnopi+xnmbar*(rk2*op_upd*n2*rmassinv_n2+rk7*nplus*o2*rmassinv_o2+beta9i*no*rmassinv_no)
+  b = qo2pi+xnmbar*(rk1*op_upd+rk6*nplus)*o2*rmassinv_o2+rk26*xiop2d*o2*rmassinv_o2
+  c = xnmbar*(rk4*n4s*rmassinv_n4s+rk5*no*rmassinv_no)
   d = qn2pi+(rk16*xiop2p+rk23*xiop2d)*n2*rmassinv_n2
-  e = xnmbarm*(rk3*o1*rmassinv_o1+rk9*o2*rmassinv_o2)
+  e = xnmbar*(rk3*o1*rmassinv_o1+rk9*o2*rmassinv_o2)
   fg = op_upd+nplus
-  h = xnmbarm*rk9*o2*rmassinv_o2
+  h = xnmbar*rk9*o2*rmassinv_o2
 
   a0 = -e*c*(a+b+d)
   a1 = -(ra1*(e*(c*fg+b)+d*(c+h))+ra2*(e*(a+d)-h*d)+ra3*c*(a+b))/4.
@@ -75,8 +75,7 @@ subroutine elden_ng(nplus,n2p,nop,o2p,electrons,i_ng)
   w1 = -(a4*a0-4.*a3*a1+3.*a2**2)/12.
   w2 = (a4*(a2*a0-a1**2)-a3*(a3*a0-a1*a2)+a2*(a3*a1-a2**2))/4.
   root = -2.*real((.5*(w2+sqrt(cmplx(w2**2+4.*w1**3+err)))+err)**(1./3.))
-  w1 = a4*root+a3**2-a4*a2+err
-  w1 = sqrt(max(w1,0.))
+  w1 = sqrt(max(a4*root+a3**2-a4*a2+err,0.))
   w2 = sqrt((2.*root+a2)**2-a4*a0+err)
   w3 = 2.*a3*root+a3*a2-a4*a1+err
   w1 = sign(w1,w2*w3)

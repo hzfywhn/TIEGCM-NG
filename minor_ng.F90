@@ -1,7 +1,7 @@
 subroutine minor_ng(fcomp,fcomp_tm1,fcomp_out,fcomp_tm1_out,sloss,sprod,flbc,fubc,rmx,phix,alfax,name,istep,i_ng)
 
   use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,glat_ng
-  use cons_module,only: rmassinv_o2,rmassinv_o1,rmassinv_n2,boltz,p0,rmass_o2,rmass_o1,rmass_n2, &
+  use cons_module,only: rmassinv_o2,rmassinv_o1,rmassinv_n2,p0,rmass_o2,rmass_o1,rmass_n2, &
     dtr,pi,grav,avo,dtsmooth,dtsmooth_div2,difhor,rmassinv_he
   use init_module,only: iday
   use fields_ng_module,only: hor,b,fb,flds,itp,itc,shapiro,dtx2inv,dzp,expzmid_inv,expzmid,expz,difk,bndry
@@ -28,7 +28,7 @@ subroutine minor_ng(fcomp,fcomp_tm1,fcomp_out,fcomp_tm1_out,sloss,sprod,flbc,fub
   real,dimension(flds(i_ng)%latd0:flds(i_ng)%latd1) :: rlat,dfactor
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: tlbc,xmbari,bo2,bo1,bhe
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    tn,o2,o1,he,mbar,barm,w,hadvec,do2dz,do1dz,pso2,pso1,dmdz,tni,s0prod, &
+    tn,o2,o1,he,mbar,barm,xnmbar,w,hadvec,do2dz,do1dz,pso2,pso1,dmdz,xmbar_k,tni,s0prod, &
     alfa11,alfa12,alfa21,alfa22,ex,ax,thdiff,p_coef,q_coef,r_coef,f_rhs,ftm1_smooth,wi,dtnidz
   external :: smooth_ng,advec_ng,trsolv_ng
 
@@ -38,6 +38,7 @@ subroutine minor_ng(fcomp,fcomp_tm1,fcomp_out,fcomp_tm1_out,sloss,sprod,flbc,fub
   he = flds(i_ng)%he(:,:,:,itp(i_ng))
   mbar = flds(i_ng)%mbar(:,:,:,itp(i_ng))
   barm = flds(i_ng)%barm(:,:,:,itp(i_ng))
+  xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
 
   w = flds(i_ng)%w(:,:,:,itc(i_ng))
   tlbc = flds(i_ng)%tlbc
@@ -59,6 +60,9 @@ subroutine minor_ng(fcomp,fcomp_tm1,fcomp_out,fcomp_tm1_out,sloss,sprod,flbc,fub
   bhe = b(3,1)*o2(1,:,:)+b(3,2)*o1(1,:,:)+b(3,3)*he(1,:,:)+fb(3)
   xmbari = 1./(bo2*rmassinv_o2+bo1*rmassinv_o1+(1.-bo2-bo1-bhe)*rmassinv_n2+bhe*rmassinv_he)
 
+  xmbar_k = barm
+  xmbar_k(1,:,:) = .5*(xmbari+mbar(1,:,:))
+
   dmdz(1,:,:) = (mbar(1,:,:)-xmbari)/dzp(i_ng)
   pso1(1,:,:) = .5*(bo1+o1(1,:,:))
   pso2(1,:,:) = .5*(bo2+o2(1,:,:))
@@ -79,23 +83,20 @@ subroutine minor_ng(fcomp,fcomp_tm1,fcomp_out,fcomp_tm1_out,sloss,sprod,flbc,fub
     tni(k,:,:) = .5*(tn(k,:,:)+tn(k-1,:,:))
   enddo
 
-  s0prod = sprod*rmx*boltz*tn/(p0*mbar)
-  do k = 1,nk
-    s0prod(k,:,:) = s0prod(k,:,:)/expz(i_ng,k)
-  enddo
+  s0prod = sprod*rmx/xnmbar
 
   alfa11 = -(phi(1,3)+salfa12*pso1)
   alfa12 = salfa12*pso2
   alfa21 = salfa21*pso1
   alfa22 = -(phi(2,3)+salfa21*pso2)
 
-  ex = ((salfax1*alfa22-salfax2*alfa21)*(do2dz-(1.-(rmass_o2+dmdz)/barm)*pso2)+ &
-    (salfax2*alfa11-salfax1*alfa12)*(do1dz-(1.-(rmass_o1+dmdz)/barm)*pso1))/ &
-    (alfa11*alfa22-alfa12*alfa21)+1.-(rmx+dmdz)/barm
+  ex = ((salfax1*alfa22-salfax2*alfa21)*(do2dz-(1.-(rmass_o2+dmdz)/xmbar_k)*pso2)+ &
+    (salfax2*alfa11-salfax1*alfa12)*(do1dz-(1.-(rmass_o1+dmdz)/xmbar_k)*pso1))/ &
+    (alfa11*alfa22-alfa12*alfa21)+1.-(rmx+dmdz)/xmbar_k
 
-  dmdz = dmdz/barm
+  dmdz = dmdz/xmbar_k
 
-  ax = -barm/(tau*rmass_n2)*(t00/tni)**0.25/(phix(3)+salfax1*pso2+salfax2*pso1)
+  ax = -xmbar_k/(tau*rmass_n2)*(t00/tni)**0.25/(phix(3)+salfax1*pso2+salfax2*pso1)
 
   do k = 2,nk-1
     dtnidz(k,:,:) = (tni(k+1,:,:)-tni(k-1,:,:))/2.

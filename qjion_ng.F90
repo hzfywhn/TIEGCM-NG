@@ -12,7 +12,7 @@ subroutine qjion_ng(qtotal,i_ng)
   real,parameter :: aureff = 0.05
   integer :: nk,k
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    o2,o1,n2,o2p,op,n4s,n2d,no,ne,xnmbarm,xnmbari,n2p,nplus,nop,xiop2p,xiop2d, &
+    o2,o1,n2,o2p,op,n4s,n2d,no,ne,xnmbar,xnmbari,n2p,nplus,nop,xiop2p,xiop2d, &
     rk1,rk2,rk3,ra1,ra2,ra3,rk19,rk20,rk25,qop2p,qop2d,qo2p,qop,qn2p,qnp,qnop,qtot,qphoto,qic,nei
 
   o2 = flds(i_ng)%o2(:,:,:,itp(i_ng))
@@ -24,8 +24,8 @@ subroutine qjion_ng(qtotal,i_ng)
   n2d = flds(i_ng)%n2d(:,:,:,itp(i_ng))
   no = flds(i_ng)%no(:,:,:,itp(i_ng))
   ne = flds(i_ng)%ne(:,:,:,itp(i_ng))
-  xnmbarm = flds(i_ng)%xnmbarm
-  xnmbari = flds(i_ng)%xnmbari
+  xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
+  xnmbari = flds(i_ng)%xnmbari(:,:,:,itp(i_ng))
   n2p = flds(i_ng)%n2p
   nplus = flds(i_ng)%nplus
   nop = flds(i_ng)%nop
@@ -64,10 +64,10 @@ subroutine qjion_ng(qtotal,i_ng)
     op*(rk2*n2*rmassinv_n2*1.0888+rk10*n2d*rmassinv_n2d*1.45)+ &
     o1*rmassinv_o1*(rk3*n2p*0.70+rk8*nplus*0.98)+ &
     o2p*(rk4*n4s*rmassinv_n4s*4.21+rk5*no*rmassinv_no*2.813))+ &
-    nei*(ra1*nop*0.854+ra2*o2p*5.2755+ra3*n2p*3.678)/xnmbarm)*evergs+ &
+    nei*(ra1*nop*0.854+ra2*o2p*5.2755+ra3*n2p*3.678)/xnmbar)*evergs+ &
     (avo*(((rk16*3.02+rk17*0.7)*n2*rmassinv_n2+rk18*o1*rmassinv_o1*5.0)*xiop2p+ &
     (rk23*n2*rmassinv_n2*1.33+rk24*o1*rmassinv_o1*3.31+rk26*4.87*o2*rmassinv_o2)*xiop2d)+ &
-    (nei*((rk19*5.0+rk20*1.69)*xiop2p+rk25*3.31*xiop2d)-(rk21*5.02+rk22*1.69)*xiop2p-rk27*3.33*xiop2d)/xnmbarm)*evergs
+    (nei*((rk19*5.0+rk20*1.69)*xiop2p+rk25*3.31*xiop2d)-(rk21*5.02+rk22*1.69)*xiop2p-rk27*3.33*xiop2d)/xnmbar)*evergs
   qic = max(qic,1.e-30)
 
   do k = 1,nk-2

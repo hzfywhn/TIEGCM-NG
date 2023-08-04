@@ -1,4 +1,4 @@
-subroutine ionvel_ng(ui,vi,wi,i_ng)
+subroutine ionvel_ng(ui,vi,wi,Etot,i_ng)
 
   use params_module,only: nlevp1_ng
   use cons_module,only: re
@@ -7,7 +7,7 @@ subroutine ionvel_ng(ui,vi,wi,i_ng)
   implicit none
 
   integer,intent(in) :: i_ng
-  real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(out) :: ui,vi,wi
+  real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(out) :: ui,vi,wi,Etot
 
   integer :: nk,k
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: xb,yb,zb,bmod
@@ -49,6 +49,8 @@ subroutine ionvel_ng(ui,vi,wi,i_ng)
   ui = ui*100.
   vi = vi*100.
   wi = wi*100.
+
+  Etot = sqrt(eex**2+eey**2+eez**2)*1E2
 
   call addfld(ui,'UI_ExB',i_ng)
   call addfld(vi,'VI_ExB',i_ng)

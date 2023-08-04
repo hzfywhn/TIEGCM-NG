@@ -1,7 +1,7 @@
 subroutine qjoule_ti_ng(qji_ti,i_ng)
 
   use params_module,only: nlevp1_ng
-  use cons_module,only: grav,gask,rmass_o2,rmass_o1,rmass_n2,rmass_n4s,rmass_no
+  use cons_module,only: rmass_o2,rmass_o1,rmass_n2,rmass_n4s,rmass_no
   use fields_ng_module,only: flds,itp
   implicit none
 
@@ -10,7 +10,7 @@ subroutine qjoule_ti_ng(qji_ti,i_ng)
 
   integer :: nk,k
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    un,vn,w,ui,vi,wi,lam1,op,nplus,n2p,nop,o2p,mbar,tn,vert_vel,uii,vii,wii,m_i,mfac,wni,lam1i
+    un,vn,w,ui,vi,wi,lam1,op,nplus,n2p,nop,o2p,mbar,scht,vert_vel,uii,vii,wii,m_i,mfac,wni,lam1i
 
   un = flds(i_ng)%un(:,:,:,itp(i_ng))
   vn = flds(i_ng)%vn(:,:,:,itp(i_ng))
@@ -25,7 +25,7 @@ subroutine qjoule_ti_ng(qji_ti,i_ng)
   nop = flds(i_ng)%nop
   o2p = flds(i_ng)%o2p(:,:,:,itp(i_ng))
   mbar = flds(i_ng)%mbar(:,:,:,itp(i_ng))
-  tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
+  scht = flds(i_ng)%scht(:,:,:,itp(i_ng))
 
   nk = nlevp1_ng(i_ng)
 
@@ -44,7 +44,7 @@ subroutine qjoule_ti_ng(qji_ti,i_ng)
 
   m_i = (op*rmass_o1+o2p*rmass_o2+nplus*rmass_n4s+n2p*rmass_n2+nop*rmass_no)/(op+o2p+nplus+n2p+nop)
   mfac = mbar/(m_i+mbar)
-  vert_vel = wni*gask*tn/(mbar*grav)
+  vert_vel = wni*scht
   qji_ti = mfac*lam1i*((uii-un)**2+(vii-vn)**2+(wii-vert_vel)**2)
 
 end subroutine qjoule_ti_ng
@@ -52,7 +52,6 @@ end subroutine qjoule_ti_ng
 subroutine qjoule_tn_ng(qji_tn,i_ng)
 
   use params_module,only: nlevp1_ng
-  use cons_module,only: grav,gask
   use input_module,only: joulefac
   use fields_ng_module,only: flds,itp
   implicit none
@@ -62,7 +61,7 @@ subroutine qjoule_tn_ng(qji_tn,i_ng)
 
   integer :: nk,k
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    un,vn,w,ui,vi,wi,lam1,mbar,tn,vel_zonal,vel_merid,vel_vert,scheight,wni,uii,vii,wii,lam1i
+    un,vn,w,ui,vi,wi,lam1,scht,vel_zonal,vel_merid,vel_vert,wni,uii,vii,wii,lam1i
 
   un = flds(i_ng)%un(:,:,:,itp(i_ng))
   vn = flds(i_ng)%vn(:,:,:,itp(i_ng))
@@ -71,8 +70,7 @@ subroutine qjoule_tn_ng(qji_tn,i_ng)
   vi = flds(i_ng)%vi
   wi = flds(i_ng)%wi
   lam1 = flds(i_ng)%lam1
-  mbar = flds(i_ng)%mbar(:,:,:,itp(i_ng))
-  tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
+  scht = flds(i_ng)%scht(:,:,:,itp(i_ng))
 
   nk = nlevp1_ng(i_ng)
 
@@ -89,10 +87,9 @@ subroutine qjoule_tn_ng(qji_tn,i_ng)
   wii(nk,:,:) = 1.5*wi(nk,:,:)-.5*wi(nk-1,:,:)
   lam1i(nk,:,:) = 1.5*lam1(nk,:,:)-.5*lam1(nk-1,:,:)
 
-  scheight = gask*tn/(mbar*grav)
   vel_zonal = uii-un
   vel_merid = vii-vn
-  vel_vert = wii-scheight*wni
+  vel_vert = wii-scht*wni
   qji_tn = lam1i*(vel_zonal**2+vel_merid**2+vel_vert**2)*joulefac
 
 end subroutine qjoule_tn_ng

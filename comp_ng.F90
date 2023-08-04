@@ -33,7 +33,8 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     tn,o2,o2_nm,o1,o1_nm,he,he_nm,w,mbar,hdo2,hdo1,hdhe,normalize, &
     o2nm_smooth,o1nm_smooth,henm_smooth,o2_advec,o1_advec,he_advec,wi
-  real,dimension(0:nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: o2i,o1i,hei,embari,tni
+  real,dimension(0:nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
+    o2i,o1i,hei,embari,tni,dembardz,dtndz
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3) :: zz,upd,diff_fac
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,3) :: gama
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,0:3) :: fs
@@ -78,6 +79,8 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
   hei(0,:,:) = .5*(ps0(:,:,ihe)+he(1,:,:))
   embari(0,:,:) = .5*(embar0+mbar(1,:,:))
   tni(0,:,:) = .5*(tlbc+tn(1,:,:))
+  dembardz(0,:,:) = mbar(1,:,:)-embar0
+  dtndz(0,:,:) = tn(1,:,:)-tlbc
   do k = 1,nk-1
     o2i(k,:,:) = .5*(o2(k,:,:)+o2(k+1,:,:))
     o1i(k,:,:) = .5*(o1(k,:,:)+o1(k+1,:,:))
@@ -85,6 +88,8 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
     embari(k,:,:) = .5*(mbar(k,:,:)+mbar(k+1,:,:))
     tni(k,:,:) = .5*(tn(k,:,:)+tn(k+1,:,:))
     wi(k,:,:) = .5*(w(k,:,:)+w(k+1,:,:))
+    dembardz(k,:,:) = mbar(k+1,:,:)-mbar(k,:,:)
+    dtndz(k,:,:) = tn(k+1,:,:)-tn(k,:,:)
   enddo
   o2i(nk,:,:) = 1.5*o2(nk,:,:)-.5*o2(nk-1,:,:)
   o1i(nk,:,:) = 1.5*o1(nk,:,:)-.5*o1(nk-1,:,:)
@@ -92,6 +97,10 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
   embari(nk,:,:) = 1.5*mbar(nk,:,:)-.5*mbar(nk-1,:,:)
   tni(nk,:,:) = 1.5*tn(nk,:,:)-.5*tn(nk-1,:,:)
   wi(nk,:,:) = 1.5*w(nk,:,:)-.5*w(nk-1,:,:)
+  dembardz(nk,:,:) = dembardz(nk-1,:,:)
+  dtndz(nk,:,:) = dtndz(nk-1,:,:)
+  dembardz = dembardz/dz(i_ng)
+  dtndz = dtndz/dz(i_ng)
 
   call advec_ng(o2,o2_advec,i_ng)
   call advec_ng(o1,o1_advec,i_ng)
@@ -119,15 +128,15 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
     enddo
   enddo
 
-  wks4 = (mbar(1,:,:)-embar0)/(dz(i_ng)*embari(0,:,:)*2.)
+  wks4 = dembardz(0,:,:)/(embari(0,:,:)*2.)
 
   km = 1
   kp = 2
 
-  ep(:,:,io2,kp) = 1.-1./embari(0,:,:)*(rmass_o2+(mbar(1,:,:)-embar0)/dz(i_ng))
-  ep(:,:,io1,kp) = 1.-1./embari(0,:,:)*(rmass_o1+(mbar(1,:,:)-embar0)/dz(i_ng))
-  ep(:,:,ihe,kp) = 1.-1./embari(0,:,:)*(rmass_he+(mbar(1,:,:)-embar0)/dz(i_ng))- &
-    thdiffalpha*(tn(1,:,:)-tlbc)/(dz(i_ng)*tni(0,:,:))
+  ep(:,:,io2,kp) = 1.-1./embari(0,:,:)*(rmass_o2+dembardz(0,:,:))
+  ep(:,:,io1,kp) = 1.-1./embari(0,:,:)*(rmass_o1+dembardz(0,:,:))
+  ep(:,:,ihe,kp) = 1.-1./embari(0,:,:)*(rmass_he+dembardz(0,:,:))- &
+    thdiffalpha*dtndz(0,:,:)/tni(0,:,:)
   zz(1,:,:,:) = 0.
 
   alpha(:,:,io2,1) = -(phi(io2,4)+(phi(io2,io1)-phi(io2,4))*o1i(0,:,:)+ &
@@ -174,10 +183,10 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
     km = kp
     kp = ktmp
 
-    ep(:,:,io2,kp) = 1.-1./embari(k,:,:)*(rmass_o2+(mbar(k+1,:,:)-mbar(k,:,:))/dz(i_ng))
-    ep(:,:,io1,kp) = 1.-1./embari(k,:,:)*(rmass_o1+(mbar(k+1,:,:)-mbar(k,:,:))/dz(i_ng))
-    ep(:,:,ihe,kp) = 1.-1./embari(k,:,:)*(rmass_he+(mbar(k+1,:,:)-mbar(k,:,:))/dz(i_ng))
-    if (k /= nk-1) ep(:,:,ihe,kp) = ep(:,:,ihe,kp)-thdiffalpha*(tn(k+1,:,:)-tn(k,:,:))/(dz(i_ng)*tni(k,:,:))
+    ep(:,:,io2,kp) = 1.-1./embari(k,:,:)*(rmass_o2+dembardz(k,:,:))
+    ep(:,:,io1,kp) = 1.-1./embari(k,:,:)*(rmass_o1+dembardz(k,:,:))
+    ep(:,:,ihe,kp) = 1.-1./embari(k,:,:)*(rmass_he+dembardz(k,:,:))
+    if (k /= nk-1) ep(:,:,ihe,kp) = ep(:,:,ihe,kp)-thdiffalpha*dtndz(k,:,:)/tni(k,:,:)
 
     alpha(:,:,io2,1) = -(phi(io2,4)+(phi(io2,io1)-phi(io2,4))*o1i(k,:,:)+ &
       (diff_fac(k+1,:,:,io2)*phi(io2,ihe)-phi(io2,4))*hei(k,:,:))
@@ -214,7 +223,7 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
     endif
 
     wks3 = wks4
-    wks4 = (mbar(k+1,:,:)-mbar(k,:,:))/(dz(i_ng)*embari(k,:,:)*2.)
+    wks4 = dembardz(k,:,:)/(embari(k,:,:)*2.)
 
     do m = 1,3
       do isp = io2,ihe
@@ -286,15 +295,20 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
     wks1 = qk(:,:,1,1)*(qk(:,:,2,2)*qk(:,:,3,3)-qk(:,:,2,3)*qk(:,:,3,2))+ &
       qk(:,:,1,2)*(qk(:,:,2,3)*qk(:,:,3,1)-qk(:,:,2,1)*qk(:,:,3,3))+ &
       qk(:,:,1,3)*(qk(:,:,2,1)*qk(:,:,3,2)-qk(:,:,2,2)*qk(:,:,3,1))
-    wkm1(:,:,io2,1) = (qk(:,:,2,2)*qk(:,:,3,3)-qk(:,:,2,3)*qk(:,:,3,2))/wks1
-    wkm1(:,:,io2,2) = (qk(:,:,1,3)*qk(:,:,3,2)-qk(:,:,1,2)*qk(:,:,3,3))/wks1
-    wkm1(:,:,io2,3) = (qk(:,:,1,2)*qk(:,:,2,3)-qk(:,:,1,3)*qk(:,:,2,2))/wks1
-    wkm1(:,:,io1,1) = (qk(:,:,2,3)*qk(:,:,3,1)-qk(:,:,2,1)*qk(:,:,3,3))/wks1
-    wkm1(:,:,io1,2) = (qk(:,:,1,1)*qk(:,:,3,3)-qk(:,:,1,3)*qk(:,:,3,1))/wks1
-    wkm1(:,:,io1,3) = (qk(:,:,1,3)*qk(:,:,2,1)-qk(:,:,1,1)*qk(:,:,2,3))/wks1
-    wkm1(:,:,ihe,1) = (qk(:,:,2,1)*qk(:,:,3,2)-qk(:,:,2,2)*qk(:,:,3,1))/wks1
-    wkm1(:,:,ihe,2) = (qk(:,:,1,2)*qk(:,:,3,1)-qk(:,:,1,1)*qk(:,:,3,2))/wks1
-    wkm1(:,:,ihe,3) = (qk(:,:,1,1)*qk(:,:,2,2)-qk(:,:,1,2)*qk(:,:,2,1))/wks1
+    wkm1(:,:,io2,1) = qk(:,:,2,2)*qk(:,:,3,3)-qk(:,:,2,3)*qk(:,:,3,2)
+    wkm1(:,:,io2,2) = qk(:,:,1,3)*qk(:,:,3,2)-qk(:,:,1,2)*qk(:,:,3,3)
+    wkm1(:,:,io2,3) = qk(:,:,1,2)*qk(:,:,2,3)-qk(:,:,1,3)*qk(:,:,2,2)
+    wkm1(:,:,io1,1) = qk(:,:,2,3)*qk(:,:,3,1)-qk(:,:,2,1)*qk(:,:,3,3)
+    wkm1(:,:,io1,2) = qk(:,:,1,1)*qk(:,:,3,3)-qk(:,:,1,3)*qk(:,:,3,1)
+    wkm1(:,:,io1,3) = qk(:,:,1,3)*qk(:,:,2,1)-qk(:,:,1,1)*qk(:,:,2,3)
+    wkm1(:,:,ihe,1) = qk(:,:,2,1)*qk(:,:,3,2)-qk(:,:,2,2)*qk(:,:,3,1)
+    wkm1(:,:,ihe,2) = qk(:,:,1,2)*qk(:,:,3,1)-qk(:,:,1,1)*qk(:,:,3,2)
+    wkm1(:,:,ihe,3) = qk(:,:,1,1)*qk(:,:,2,2)-qk(:,:,1,2)*qk(:,:,2,1)
+    do m = 1,3
+      do isp = io2,ihe
+        wkm1(:,:,isp,m) = wkm1(:,:,isp,m)/wks1
+      enddo
+    enddo
 
     wkv1 = fk
     gama(k+1,:,:,:,:) = 0.

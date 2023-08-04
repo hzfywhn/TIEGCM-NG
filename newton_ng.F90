@@ -16,7 +16,7 @@ subroutine newton_ng(cool_implicit,cool_explicit,i_ng)
   real :: co2u,uttime,yfrac
   real,dimension(nlevp1_ng(i_ng)) :: xfac,xfaci
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    tn,o2,o1,n2,no,barm,xnmbarm,cp,xmco2,nco2,aco2,bco2,ano,co2_cool,no_cool,fac1,fac2,cpi,fac1_a
+    tn,o2,o1,n2,no,barm,xnmbar,cp,xmco2,nco2,aco2,bco2,ano,co2_cool,no_cool,fac1,fac2,cpi,fac1_a
   real,dimension(29),parameter :: zpint_5 = (/(zibot+(k-1)*0.5, k=1,29)/), &
     xfac_5 = (/0.1000E-01, 0.1000E-01, 0.1000E-01, 0.5000E-01, 0.1000E+00, &
       0.2000E+00, 0.4000E+00, 0.5500E+00, 0.7000E+00, 0.7500E+00, &
@@ -28,7 +28,7 @@ subroutine newton_ng(cool_implicit,cool_explicit,i_ng)
   n2 = flds(i_ng)%n2
   no = flds(i_ng)%no(:,:,:,itp(i_ng))
   barm = flds(i_ng)%barm(:,:,:,itp(i_ng))
-  xnmbarm = flds(i_ng)%xnmbarm
+  xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
   cp = flds(i_ng)%cp
 
   nk = nlevp1_ng(i_ng)
@@ -70,7 +70,7 @@ subroutine newton_ng(cool_implicit,cool_explicit,i_ng)
 
   co2_cool = 2.65e-13*nco2*exp(-960./tn)*avo*((o2*rmassinv_o2+n2*rmassinv_n2)*aco2+o1*rmassinv_o1*bco2)
 
-  ano = xnmbarm*(4.2e-11*o1*rmassinv_o1+2.4e-14*o2*rmassinv_o2)
+  ano = xnmbar*(4.2e-11*o1*rmassinv_o1+2.4e-14*o2*rmassinv_o2)
 
   no_cool = 4.956e-12*avo*no*rmassinv_no*ano/(ano+13.3)*exp(-2700./tn)
 

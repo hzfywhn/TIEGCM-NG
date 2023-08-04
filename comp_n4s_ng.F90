@@ -15,15 +15,15 @@ subroutine comp_n4s_ng(n4s_out,n4s_nm1_out,istep,i_ng)
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: tlbc,n4s_ubc
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3) :: n4s_lbc
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    o2,o1,n2,xnmbarm,xnmbari,no,n2d,ne,o2p,op,n2p,nplus,nop,n4s,n4s_nm1, &
+    o2,o1,n2,xnmbar,xnmbari,no,n2d,ne,o2p,op,n2p,nplus,nop,n4s,n4s_nm1, &
     qtef,beta1,beta3,beta5,beta8,beta17,ra1,ra3,rk2,n4s_prod,n4s_loss,qtefi,beta8i,nei1,nei2
   external :: minor_ng
 
   o2 = flds(i_ng)%o2(:,:,:,itp(i_ng))
   o1 = flds(i_ng)%o1(:,:,:,itp(i_ng))
   n2 = flds(i_ng)%n2
-  xnmbarm = flds(i_ng)%xnmbarm
-  xnmbari = flds(i_ng)%xnmbari
+  xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
+  xnmbari = flds(i_ng)%xnmbari(:,:,:,itp(i_ng))
   no = flds(i_ng)%no(:,:,:,itp(i_ng))
   n2d = flds(i_ng)%n2d(:,:,:,itc(i_ng))
   ne = flds(i_ng)%ne(:,:,:,itp(i_ng))
@@ -70,11 +70,11 @@ subroutine comp_n4s_ng(n4s_out,n4s_nm1_out,istep,i_ng)
   nei2(nk,:,:) = sqrt(ne(nk,:,:)**3/ne(nk-1,:,:))
 
   n4s_prod = qtefi*(1.-brn2d)+ &
-    xnmbarm*(n2d*rmassinv_n2d*(xnmbarm*beta4*o1*rmassinv_o1+beta5*nei1+beta7)+beta8i*no*rmassinv_no)+ &
-    xnmbarm*(rk2*op*n2*rmassinv_n2+rk6*nplus*o2*rmassinv_o2+rk8*nplus*o1*rmassinv_o1)+ &
+    xnmbar*(n2d*rmassinv_n2d*(xnmbar*beta4*o1*rmassinv_o1+beta5*nei1+beta7)+beta8i*no*rmassinv_no)+ &
+    xnmbar*(rk2*op*n2*rmassinv_n2+rk6*nplus*o2*rmassinv_o2+rk8*nplus*o1*rmassinv_o1)+ &
     nei2*(ra1*nop*0.15+ra3*n2p*1.1)
 
-  n4s_loss = -xnmbarm*(beta1*o2*rmassinv_o2+beta3*no*rmassinv_no+xnmbarm*beta17*o1*rmassinv_o1*n2*rmassinv_n2)-rk4*o2p
+  n4s_loss = -xnmbar*(beta1*o2*rmassinv_o2+beta3*no*rmassinv_no+xnmbar*beta17*o1*rmassinv_o1*n2*rmassinv_n2)-rk4*o2p
 
   call minor_ng(n4s,n4s_nm1,n4s_out,n4s_nm1_out,n4s_loss,n4s_prod,n4s_lbc,n4s_ubc,rmass_n4s,phi_n4s,alfa_n4s,'N4S',istep,i_ng)
 

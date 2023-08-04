@@ -545,20 +545,21 @@
 ! Calculate vc, barm, xnmbar, and z (tn,o2,o1,vn are input).
 !
       call addiag(
-     |  tn	 (levd0,lond0,latd0,itp),   ! in
-     |  o2	 (levd0,lond0,latd0,itp),   ! in
-     |  o1	 (levd0,lond0,latd0,itp),   ! in
-     |  he	 (levd0,lond0,latd0,itp),   ! in
-     |  vn	 (levd0,lond0,latd0,itp),   ! in
-     |  vc	 (levd0,lond0,latd0,itp),   ! out
-     |  mbar   (levd0,lond0,latd0,itp),     ! out
-     |  barm   (levd0,lond0,latd0,itp),     ! out
-     |  xnmbar (levd0,lond0,latd0),	    ! out
-     |  xnmbari(levd0,lond0,latd0),	    ! out
-     |  xnmbarm(levd0,lond0,latd0),	    ! out
-     |  z      (levd0,lond0,latd0,itp),     ! out (note itp is output)
-     |  zg     (levd0,lond0,latd0),         ! out (z with varying grav)
-     |  n2     (levd0,lond0,latd0),         ! out (1.-o2-o1-he)
+     |  tn     (levd0,lond0,latd0,itp), ! in
+     |  o2     (levd0,lond0,latd0,itp), ! in
+     |  o1     (levd0,lond0,latd0,itp), ! in
+     |  he     (levd0,lond0,latd0,itp), ! in
+     |  vn     (levd0,lond0,latd0,itp), ! in
+     |  vc     (levd0,lond0,latd0,itp), ! out
+     |  mbar   (levd0,lond0,latd0,itp), ! out
+     |  barm   (levd0,lond0,latd0,itp), ! out
+     |  xnmbar (levd0,lond0,latd0,itp), ! out
+     |  xnmbari(levd0,lond0,latd0,itp), ! out
+     |  scht   (levd0,lond0,latd0,itp), ! out
+     |  schti  (levd0,lond0,latd0,itp), ! out
+     |  z      (levd0,lond0,latd0,itp), ! out (note itp is output)
+     |  zg     (levd0,lond0,latd0),     ! out (z with varying grav)
+     |  n2     (levd0,lond0,latd0),     ! out (1.-o2-o1-he)
      |  lon0,lon1,1,nlevp1,lat0,lat1)
 !   
       if (debug) write(6,"('advance after addiag')")
@@ -671,8 +672,7 @@
       if (iamie > 0) then
         phihm = tiepot ! whole array op
         call fminmax(phihm,nmlonp1*nmlat,fmin,fmax)
-        if (timing%level >= 2.and.time2print(nstep,istep))
-     |    write(6,"('Advance: amie phihm min,max=',2e12.4)") fmin,fmax
+        write(6,"('Advance: amie phihm min,max=',2e12.4)") fmin,fmax
       endif
 !
 ! Set pfrac for dynamo, regardless of potential_model (in colath.F): 
@@ -720,9 +720,8 @@
 ! Prepare neutral inputs for parallel dynamo:
 ! Calculate vertical velocity wn:
         call calc_wn(
-     |    tn   (lev0:lev1,lon0:lon1,lat0:lat1,itp),
      |    w    (lev0:lev1,lon0:lon1,lat0:lat1,itp),
-     |    mbar (lev0:lev1,lon0:lon1,lat0:lat1,itp),
+     |    scht (lev0:lev1,lon0:lon1,lat0:lat1,itp),
      |    wn   (lev0:lev1,lon0:lon1,lat0:lat1),     ! output
      |    1,nlevp1,lon0,lon1,lat0,lat1)
 
@@ -1102,7 +1101,7 @@
 !     write(6,"('set_index: ',a,' = ',e12.4)") name,outindex
       end subroutine set_index
 !-----------------------------------------------------------------------
-      subroutine calc_wn(tn,omega,mbar,wn,lev0,lev1,lon0,lon1,lat0,lat1)
+      subroutine calc_wn(omega,scht,wn,lev0,lev1,lon0,lon1,lat0,lat1)
       use cons_module,only: gask,grav
 !
 ! Calculate vertical velocity wn for dynamo inputs:
@@ -1110,24 +1109,20 @@
 ! Args:
       integer,intent(in) :: lev0,lev1,lon0,lon1,lat0,lat1
       real,dimension(lev0:lev1,lon0:lon1,lat0:lat1),intent(in) ::
-     |  tn,omega,mbar
+     |  omega,scht
       real,dimension(lev0:lev1,lon0:lon1,lat0:lat1),intent(out) :: wn
 !
 ! Local:
       integer :: j,i,k
-      real,dimension(lev0:lev1,lon0:lon1,lat0:lat1) :: scheight
 
-!     write(6,"('calc_wn: tn=',2e12.4,' omega=',2e12.4,' mbar=',
-!    |  2e12.4)") minval(tn),maxval(tn),minval(omega),maxval(omega),
-!    |  minval(mbar),maxval(mbar)
+!     write(6,"('calc_wn: omega=',2e12.4,' scht=',2e12.4)")
+!    |  minval(omega),maxval(omega),minval(scht),maxval(scht)
 !
       do j=lat0,lat1
         do i=lon0,lon1
           do k=lev0,lev1-1
-            scheight(k,i,j) = gask*tn(k,i,j)/(mbar(k,i,j)*grav)
-            wn(k,i,j)=0.5*(omega(k,i,j)+omega(k+1,i,j))*scheight(k,i,j)
+            wn(k,i,j)=0.5*(omega(k,i,j)+omega(k+1,i,j))*scht(k,i,j)
           enddo
-          scheight(lev1,i,j) = 0.
           wn(lev1,i,j) = 0.
         enddo
       enddo

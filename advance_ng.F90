@@ -5,7 +5,6 @@ recursive subroutine advance_ng(i_ng)
 
   use params_module,only: n_ng,nlevp1_ng
   use input_module,only: nstep_ng,nstep_sub,nudge_level,nudge_lbc,nudge_f4d,nudge_alpha
-  use cons_module,only: gask,grav
   use fields_ng_module,only: flds,nf3din,nf2din,itp,itc,modeltime,step
   use level_outer_ng_module,only: map_in_1=>map_in,map_out_1=>map_out,set_bndry_1=>set_bndry
   use levels_inner_ng_module,only: map_in,map_out,set_bndry
@@ -17,8 +16,7 @@ recursive subroutine advance_ng(i_ng)
 
   integer :: istep,ifld,nk,k,latbeg,latend,lonbeg,lonend,offbeg,offend,lonbeg1,lonend1,itmp
   real :: delta,fac1,fac2
-  real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    tn,mbar,omega,scheight,omegai,wn
+  real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: omega,omegai,wn
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: tmp_lbc
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend) :: wt,ext_fld
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend,nlb) :: nclbc
@@ -26,6 +24,8 @@ recursive subroutine advance_ng(i_ng)
   real,dimension(nudge_fields(i_ng)%maxlev,flds(i_ng)%lond0:flds(i_ng)%lond1, &
     nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend,nf4d) :: ncf4d
   external :: interp_fields_ng,addiag_ng,hdif12_ng,dynamics_ng
+
+  nk = nlevp1_ng(i_ng)
 
 ! return beyond inner most level
   if (i_ng >= n_ng+1) return
@@ -114,9 +114,10 @@ recursive subroutine advance_ng(i_ng)
       flds(i_ng)%vc(:,:,:,itp(i_ng)), &
       flds(i_ng)%mbar(:,:,:,itp(i_ng)), &
       flds(i_ng)%barm(:,:,:,itp(i_ng)), &
-      flds(i_ng)%xnmbar, &
-      flds(i_ng)%xnmbari, &
-      flds(i_ng)%xnmbarm, &
+      flds(i_ng)%xnmbar(:,:,:,itp(i_ng)), &
+      flds(i_ng)%xnmbari(:,:,:,itp(i_ng)), &
+      flds(i_ng)%scht(:,:,:,itp(i_ng)), &
+      flds(i_ng)%schti(:,:,:,itp(i_ng)), &
       flds(i_ng)%z(:,:,:,itp(i_ng)), &
       flds(i_ng)%zg, &
       flds(i_ng)%n2, &
@@ -137,16 +138,13 @@ recursive subroutine advance_ng(i_ng)
 
     call dynamics_ng(istep,i_ng)
 
-    nk = nlevp1_ng(i_ng)
-    tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
-    mbar = flds(i_ng)%mbar(:,:,:,itp(i_ng))
+! calc_wn
     omega = flds(i_ng)%w(:,:,:,itp(i_ng))
-    scheight = gask*tn/(mbar*grav)
     do k = 1,nk-1
       omegai(k,:,:) = 0.5*(omega(k,:,:)+omega(k+1,:,:))
     enddo
     omegai(nk,:,:) = 1.5*omega(nk,:,:)-0.5*omega(nk-1,:,:)
-    wn = omegai*scheight
+    wn = omegai*flds(i_ng)%scht(:,:,:,itp(i_ng))
     call addfld(wn,'WN',i_ng)
 
     if (nudge_f4d) then
