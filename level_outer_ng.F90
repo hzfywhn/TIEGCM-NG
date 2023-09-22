@@ -15,7 +15,7 @@ module level_outer_ng_module
     use params_module,only: nlonp4,nlon_ng,nlat_ng,glon0,glat,glon_ng,glat_ng,dlon,dlat
     use fields_ng_module,only: flds,domain
     use mpi_module,only: ntask,tasks,lon0,lon1,lat0,lat1
-    use mpi_f08,only: mpi_proc_null
+    use mpi
 
     integer :: itask
     real :: ng_lb,ng_rb,ng_tb,ng_bb, &
@@ -176,11 +176,10 @@ module level_outer_ng_module
     use amie_module,only: ekvg,efxg
     use fields_ng_module,only: nf3din,nf2din,flds
     use interp_module,only: interp3d,interp2d
-    use mpi_module,only: mxlon,mxlat,ntask,tasks,lon0,lon1,lat0,lat1
-    use mpi_f08,only: mpi_request,mpi_isend,mpi_irecv,mpi_waitall, &
-      mpi_real8,mpi_comm_world,mpi_statuses_ignore
+    use mpi_module,only: mxlon,mxlat,ntask,tasks,lon0,lon1,lat0,lat1,TIEGCM_WORLD
+    use mpi
 
-    integer :: nx,ny,cnt3d,cnt2d,itask,i0,i1,j0,j1,sidx,ifld
+    integer :: nx,ny,cnt3d,cnt2d,itask,i0,i1,j0,j1,sidx,ifld,ierror
     real :: mid_lon
     integer,dimension(1) :: idx
     real,dimension(nlonp4) :: glon0_r
@@ -190,7 +189,8 @@ module level_outer_ng_module
     real,dimension(mxlon,mxlat,5) :: sendbuf2d
     real,dimension(mxlon,mxlat,5,0:ntask-1) :: recvbuf2d
     real,dimension(nlonp4,nlat,nf2din) :: full2d,tmp2d
-    type(mpi_request),dimension(0:ntask*4-1) :: request
+    integer,dimension(0:ntask*4-1) :: request
+    external :: shutdown
 
 ! initialize sendbuf and recvbuf to 0
     nx = lon1-lon0+1
@@ -217,21 +217,28 @@ module level_outer_ng_module
 ! send to processes whose nested grid subdomain intersect the current process's global subdomain
     do itask = 0,ntask-1
       call mpi_isend(sendbuf3d,cnt3d,mpi_real8,send_glb(itask), &
-        1,mpi_comm_world,request(itask))
+        1,TIEGCM_WORLD,request(itask),ierror)
+      if (ierror /= mpi_success) call shutdown('failed to send 3d fields to global subdomain')
+
       call mpi_isend(sendbuf2d,cnt2d,mpi_real8,send_glb(itask), &
-        2,mpi_comm_world,request(itask+ntask))
+        2,TIEGCM_WORLD,request(itask+ntask),ierror)
+      if (ierror /= mpi_success) call shutdown('failed to send 2d fields to global subdomain')
     enddo
 
 ! receive from processes whose global subdomain intersect the current process's nested grid subdomain
     do itask = 0,ntask-1
       call mpi_irecv(recvbuf3d(:,:,:,:,itask),cnt3d,mpi_real8,recv_glb(itask), &
-        1,mpi_comm_world,request(itask+ntask*2))
+        1,TIEGCM_WORLD,request(itask+ntask*2),ierror)
+      if (ierror /= mpi_success) call shutdown('failed to receive 3d fields from global subdomain')
+
       call mpi_irecv(recvbuf2d(:,:,:,itask),cnt2d,mpi_real8,recv_glb(itask), &
-        2,mpi_comm_world,request(itask+ntask*3))
+        2,TIEGCM_WORLD,request(itask+ntask*3),ierror)
+      if (ierror /= mpi_success) call shutdown('failed to receive 2d fields from global subdomain')
     enddo
 
 ! wait until data transfer complete
-    call mpi_waitall(ntask*4,request,mpi_statuses_ignore)
+    call mpi_waitall(ntask*4,request,mpi_statuses_ignore,ierror)
+    if (ierror /= mpi_success) call shutdown('failed to wait for all mpi tasks to complete')
 
 ! reconstruct global fields from received global subdomains
     do itask = 0,ntask-1
@@ -299,16 +306,15 @@ module level_outer_ng_module
     use fields_ng_module,only: flds,maxlon,maxlat,domain,itc_ng=>itc,nmap,fmap,zlog
     use interp_module,only: interp3d
     use char_module,only: ismember
-    use mpi_module,only: ntask,lon0,lon1,lat0,lat1
-    use mpi_f08,only: mpi_request,mpi_isend,mpi_irecv,mpi_waitall, &
-      mpi_real8,mpi_comm_world,mpi_statuses_ignore
+    use mpi_module,only: ntask,lon0,lon1,lat0,lat1,TIEGCM_WORLD
+    use mpi
 
-    integer :: lond0,lond1,latd0,latd1,n,ifld,cnt,itask,latbeg,latend,lonbeg,lonend
+    integer :: lond0,lond1,latd0,latd1,n,ifld,cnt,itask,latbeg,latend,lonbeg,lonend,ierror
     real,dimension(nlevp1_ng(1),maxlon(1),maxlat(1),nmap) :: sendbuf
     real,dimension(nlevp1_ng(1),maxlon(1),maxlat(1),nmap,0:ntask-1) :: recvbuf
     real,dimension(nlevp1_ng(1),-1:nlon_ng(1)+2,-1:nlat_ng(1)+2,nmap) :: full
-    type(mpi_request),dimension(0:ntask*2-1) :: request
-    external :: bndry_index_ng
+    integer,dimension(0:ntask*2-1) :: request
+    external :: bndry_index_ng,shutdown
 
     call bndry_index_ng((/flds(1)%lon0,flds(1)%lon1,flds(1)%lat0,flds(1)%lat1/), &
       nlon_ng(1),nlat_ng(1),lond0,lond1,latd0,latd1)
@@ -328,16 +334,19 @@ module level_outer_ng_module
 ! send to processes whose global subdomain intersect the current process's nested grid subdomain
     do itask = 0,ntask-1
       call mpi_isend(sendbuf,cnt,mpi_real8,send_ng(itask), &
-        0,mpi_comm_world,request(itask))
+        0,TIEGCM_WORLD,request(itask),ierror)
+      if (ierror /= mpi_success) call shutdown('failed to send 3d fields to nested grid subdomain')
     enddo
 
 ! receive from processes whose nested grid subdomain intersect the current process's global subdomain
     do itask = 0,ntask-1
       call mpi_irecv(recvbuf(:,:,:,:,itask),cnt,mpi_real8,recv_ng(itask), &
-        0,mpi_comm_world,request(itask+ntask))
+        0,TIEGCM_WORLD,request(itask+ntask),ierror)
+      if (ierror /= mpi_success) call shutdown('failed to receive 3d fields from nested grid subdomain')
     enddo
 
-    call mpi_waitall(ntask*2,request,mpi_statuses_ignore)
+    call mpi_waitall(ntask*2,request,mpi_statuses_ignore,ierror)
+    if (ierror /= mpi_success) call shutdown('failed to wait for all mpi tasks to complete')
 
 ! reconstruct nested grid fields from received nested grid subdomains
     do itask = 0,ntask-1
@@ -443,11 +452,10 @@ module level_outer_ng_module
     use fields_ng_module,only: flds,nbnd,bndry,ubfill,zlog
     use interp_module,only: interp3d
     use char_module,only: ismember
-    use mpi_module,only: mxlon,mxlat,ntask,tasks,lon0,lon1,lat0,lat1
-    use mpi_f08,only: mpi_request,mpi_isend,mpi_irecv,mpi_waitall, &
-      mpi_real8,mpi_comm_world,mpi_statuses_ignore
+    use mpi_module,only: mxlon,mxlat,ntask,tasks,lon0,lon1,lat0,lat1,TIEGCM_WORLD
+    use mpi
 
-    integer :: n,if4d,cnt,itask,i0,i1,j0,j1,i,lat,ibnd,nx,sidx
+    integer :: n,if4d,cnt,itask,i0,i1,j0,j1,i,lat,ibnd,nx,sidx,ierror
     real :: mid_lon
     integer,dimension(1) :: idx
     real,dimension(1) :: bnd
@@ -457,7 +465,8 @@ module level_outer_ng_module
     real,dimension(nlevp1,nlonp4,nlat,nbnd) :: full,tmp
     real,dimension(nlevp1_ng(1),1,flds(1)%latd0:flds(1)%latd1) :: bndx
     real,dimension(nlevp1_ng(1),flds(1)%lond0:flds(1)%lond1,1) :: bndy
-    type(mpi_request),dimension(0:ntask*2-1) :: request
+    integer,dimension(0:ntask*2-1) :: request
+    external :: shutdown
 
     sendbuf = 0.
     n = 1
@@ -485,7 +494,8 @@ module level_outer_ng_module
 ! otherwise do nothing
       do itask = 0,ntask-1
         call mpi_isend(sendbuf,cnt,mpi_real8,send_bndry(i,itask), &
-          0,mpi_comm_world,request(itask))
+          0,TIEGCM_WORLD,request(itask),ierror)
+        if (ierror /= mpi_success) call shutdown('failed to send longitudinal boundaries')
       enddo
 
 ! processes with nested grid boundary:
@@ -493,10 +503,12 @@ module level_outer_ng_module
 ! otherwise do nothing
       do itask = 0,ntask-1
         call mpi_irecv(recvbuf(:,:,:,:,itask),cnt,mpi_real8,recv_bndry(i,itask), &
-          0,mpi_comm_world,request(itask+ntask))
+          0,TIEGCM_WORLD,request(itask+ntask),ierror)
+        if (ierror /= mpi_success) call shutdown('failed to receive longitudinal boundaries')
       enddo
 
-      call mpi_waitall(ntask*2,request,mpi_statuses_ignore)
+      call mpi_waitall(ntask*2,request,mpi_statuses_ignore,ierror)
+      if (ierror /= mpi_success) call shutdown('failed to wait for all mpi tasks to complete')
 
       if (flds(1)%is_bndry(i)) then
         do itask = 0,ntask-1
@@ -513,6 +525,7 @@ module level_outer_ng_module
           bnd(1) = glon_ng(1,nlon_ng(1)+2)
         endif
 
+! move longitudinal boundary into the model range (-180,180) instead of moving the mode range
         if (bnd(1) >= glon0(nlonp4)) bnd(1) = bnd(1)-360
 
 ! interpolate to nested grid boundaries
@@ -528,15 +541,18 @@ module level_outer_ng_module
     do lat = 3,4
       do itask = 0,ntask-1
         call mpi_isend(sendbuf,cnt,mpi_real8,send_bndry(lat,itask), &
-          0,mpi_comm_world,request(itask))
+          0,TIEGCM_WORLD,request(itask),ierror)
+        if (ierror /= mpi_success) call shutdown('failed to send latitudinal boundaries')
       enddo
 
       do itask = 0,ntask-1
         call mpi_irecv(recvbuf(:,:,:,:,itask),cnt,mpi_real8,recv_bndry(lat,itask), &
-          0,mpi_comm_world,request(itask+ntask))
+          0,TIEGCM_WORLD,request(itask+ntask),ierror)
+        if (ierror /= mpi_success) call shutdown('failed to receive latitudinal boundaries')
       enddo
 
-      call mpi_waitall(ntask*2,request,mpi_statuses_ignore)
+      call mpi_waitall(ntask*2,request,mpi_statuses_ignore,ierror)
+      if (ierror /= mpi_success) call shutdown('failed to wait for all mpi tasks to complete')
 
       if (flds(1)%is_bndry(lat)) then
         do itask = 0,ntask-1
@@ -556,6 +572,7 @@ module level_outer_ng_module
         glon0_r = glon0
         nx = nlonp4
 
+! move global range to cover nested grid range
         if (.not. (glon0(1)<=glon_ng(1,flds(1)%lond0) .and. glon_ng(1,flds(1)%lond1)<=glon0(nlonp4))) then
           mid_lon = (glon_ng(1,flds(1)%lond0)+glon_ng(1,flds(1)%lond1))/2
           if (glon0(1)<=mid_lon+180 .and. mid_lon+180<=glon0(nlonp4)) then

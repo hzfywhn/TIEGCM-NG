@@ -5,7 +5,8 @@ subroutine hdif12_ng(fkldt,fkldu,fkldv,fkldo2,fkldo1,fkldhe,fnrh,fkmh,i_ng)
   use cons_module,only: re_inv
   use fields_ng_module,only: flds,itp,dlamda,dphi,t0
   use gather2root_ng_module,only: gather2root_var3d
-  use mpi_f08,only: mpi_bcast,mpi_real8,mpi_comm_world
+  use mpi_module,only: TIEGCM_WORLD
+  use mpi
   implicit none
 
   integer,intent(in) :: i_ng
@@ -13,14 +14,14 @@ subroutine hdif12_ng(fkldt,fkldu,fkldv,fkldo2,fkldo1,fkldhe,fnrh,fkmh,i_ng)
     fkldt,fkldu,fkldv,fkldo2,fkldo1,fkldhe,fnrh,fkmh
 
   real,parameter :: cp2 = 0.2, con3 = 2.*cp2**2
-  integer :: nk,lond0,lond1,latd0,latd1,k,i,lat,lonbeg,latend
+  integer :: nk,lond0,lond1,latd0,latd1,k,i,lat,lonbeg,latend,ierror
   real :: con1,con2,n
   real,dimension(nlevp1_ng(i_ng)) :: dup,du,dvp,dv,ump,um,vmp,vm,delt,dels
   real,dimension(flds(i_ng)%latd0:flds(i_ng)%latd1) :: cs
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     tn_nm,un_nm,vn_nm,o2_nm,o1_nm,he_nm,mbar,avkmh,rhokmh
   real,dimension(nlevp1_ng(i_ng),-1:nlon_ng(i_ng)+2,-1:nlat_ng(i_ng)+2) :: full
-  external :: lsqdsq_ng
+  external :: lsqdsq_ng,shutdown
 
   tn_nm = flds(i_ng)%tn_nm(:,:,:,itp(i_ng))
   un_nm = flds(i_ng)%un_nm(:,:,:,itp(i_ng))
@@ -57,8 +58,10 @@ subroutine hdif12_ng(fkldt,fkldu,fkldv,fkldo2,fkldo1,fkldhe,fnrh,fkmh,i_ng)
   enddo
   fkmh(:,:,latd1) = 2.*fkmh(:,:,latd1-1)-fkmh(:,:,latd1-2)
 
-  call gather2root_var3d(fkmh,full,i_ng)
-  call mpi_bcast(full,nk*(nlon_ng(i_ng)+4)*(nlat_ng(i_ng)+4),mpi_real8,0,mpi_comm_world)
+! sync doesn't correct corner points like (lond0,latd0), so gather and broadcast to sync these points
+  call gather2root_var3d(fkmh,full,0,i_ng)
+  call mpi_bcast(full,nk*(nlon_ng(i_ng)+4)*(nlat_ng(i_ng)+4),mpi_real8,0,TIEGCM_WORLD,ierror)
+  if (ierror /= mpi_success) call shutdown('failed to broadcast fkmh to other processes')
 
   fkmh = full(:,lond0:lond1,latd0:latd1)
 

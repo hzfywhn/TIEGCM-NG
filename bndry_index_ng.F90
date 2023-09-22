@@ -1,5 +1,6 @@
 subroutine bndry_index_ng(domain,nlon,nlat,lon0,lon1,lat0,lat1)
 ! find actual boundaries in subdomains
+! inner region doesn't include ghost points, outer boundary does
 
   implicit none
 

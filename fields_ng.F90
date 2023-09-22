@@ -113,22 +113,27 @@ module fields_ng_module
 
     use params_module,only: n_ng,nlon_ng,nlat_ng
     use input_module,only: mkntask
-    use mpi_module,only: ntask,mytid,distribute_1d
-    use mpi_f08,only: mpi_allgather,mpi_integer,mpi_comm_world
+    use mpi_module,only: ntask,mytid,distribute_1d,TIEGCM_WORLD
+    use mpi
 
     integer :: i_ng,ntaski,ntaskj,ierror
+    external :: shutdown
 
     allocate(domain(n_ng,4,0:ntask-1))
 
     do i_ng = 1,n_ng
 ! divide subdomain
       call mkntask(ntask,nlon_ng(i_ng),nlat_ng(i_ng),ntaski,ntaskj,ierror)
+      if (ierror /= 0) call shutdown('Error making subdomain decomposition')
+
       call distribute_1d(1,nlon_ng(i_ng),ntaski,mod(mytid,ntaski),flds(i_ng)%lon0,flds(i_ng)%lon1)
       call distribute_1d(1,nlat_ng(i_ng),ntaskj,mytid/ntaski,flds(i_ng)%lat0,flds(i_ng)%lat1)
 
 ! each process keeps a record of the domain decomposition
       call mpi_allgather((/flds(i_ng)%lon0,flds(i_ng)%lon1,flds(i_ng)%lat0,flds(i_ng)%lat1/), &
-        4,mpi_integer,domain(i_ng,:,:),4,mpi_integer,mpi_comm_world)
+        4,mpi_integer,domain(i_ng,:,:),4,mpi_integer,TIEGCM_WORLD,ierror)
+      if (ierror /= mpi_success) call shutdown('failed to gather domain decomposition to each process')
+
       maxlon(i_ng) = maxval(domain(i_ng,2,:)-domain(i_ng,1,:))+5
       maxlat(i_ng) = maxval(domain(i_ng,4,:)-domain(i_ng,3,:))+5
 

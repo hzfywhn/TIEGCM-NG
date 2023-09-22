@@ -144,9 +144,9 @@
      |  output(mxhvols)    ! output file(s) (required)
       integer ::
      |  source_start(4),   ! source history model time
-     |  start(4,mxseries), ! primary history model start time(s)
-     |  stop(4,mxseries),  ! primary history model stop time(s)
-     |  hist(4,mxseries),  ! primary history disk write frequency
+     |  pristart(4,mxseries), ! primary history model start time(s)
+     |  pristop(4,mxseries),  ! primary history model stop time(s)
+     |  prihist(4,mxseries),  ! primary history disk write frequency
      |  mxhist_prim,       ! max number of histories per primary file
      |  noutput            ! number of output files given
 !
@@ -169,11 +169,11 @@
      |  dlev_ng,glat0_ng,glat1_ng,dlat_ng,glon0_ng,glon1_ng,dlon_ng
       character(len=mxlen_filename),dimension(mx_ng) :: fileout_ng
       character(len=16),dimension(mxfsech) :: varout_ng
-      character(len=mxlen_filename) :: nudge_ncpre,nudge_ncpost
-      character(len=mxlen_filename),dimension(mxhvols) :: nudge_ncfile
+      character(len=mxlen_filename) :: nudge_ncfile
       character(len=16),dimension(mxfsech) :: nudge_flds
-      logical :: nudge_lbc,nudge_f4d,nudge_use_refdate
+      logical,dimension(mxfsech) :: nudge_lbc,nudge_f4d
       logical,dimension(0:mx_ng) :: nudge_level
+      logical :: nudge_use_refdate
       integer,dimension(2) :: nudge_refdate
       real,dimension(2) :: nudge_sponge,nudge_delta,nudge_power
       real :: nudge_alpha
@@ -181,7 +181,7 @@
 ! Namelist for read:
       namelist/tgcm_input/ 
      |  label,step,nstep_sub,
-     |  source,source_start,output,start,stop,hist,
+     |  source,source_start,output,pristart,pristop,prihist,
      |  secout,secstart,secstop,sechist,secflds,
      |  potential_model,eddy_dif,dynamo,tide,tide2,tide3m3,
      |  f107,f107a,power,ctpoten,bximf,byimf,bzimf,swvel,swden,al,
@@ -198,9 +198,9 @@
      |  vedata,vndata,vvdata,
      |  nesting,nstep_ng,dlev_ng,glat0_ng,glat1_ng,dlat_ng,
      |  glon0_ng,glon1_ng,dlon_ng,fileout_ng,varout_ng,
-     |  nudge_ncpre,nudge_ncfile,nudge_ncpost,nudge_flds,
-     |  nudge_lbc,nudge_f4d,nudge_level,nudge_use_refdate,
-     |  nudge_refdate,nudge_sponge,nudge_delta,nudge_power,nudge_alpha
+     |  nudge_ncfile,nudge_flds,nudge_lbc,nudge_f4d,nudge_level,
+     |  nudge_use_refdate,nudge_refdate,
+     |  nudge_sponge,nudge_delta,nudge_power,nudge_alpha
 !
 ! List of fields that are always written to secondary histories:
       character(len=16) :: secflds_mandatory(6) =
@@ -217,12 +217,12 @@
 !
       contains
 !-------------------------------------------------------------------
-      subroutine input(mytid,ntask)
+      subroutine input(ntask)
 !
 ! Read and validate user namelist input (called from main tgcm.F).
 !      
 ! Args:
-      integer,intent(in) :: mytid,ntask
+      integer,intent(in) :: ntask
 !
 ! Initialize:
       call inp_init
@@ -338,9 +338,9 @@
       source = ' '
       output = ' '
       source_start(:) = ispval
-      start(:,:) = ispval
-      stop(:,:)  = ispval
-      hist(:,:)  = ispval
+      pristart(:,:) = ispval
+      pristop(:,:)  = ispval
+      prihist(:,:)  = ispval
       mxhist_prim = 10 ! default max number of histories per primary file
       if (dlat == 2.5) mxhist_prim = 4 ! 2.5 degree horizontal resolution 
 !
@@ -366,9 +366,7 @@
       fileout_ng = ''
       varout_ng = ''
 
-      nudge_ncpre = ' '
       nudge_ncfile = ' '
-      nudge_ncpost = ' '
       nudge_flds = ' '
       nudge_lbc = .false.
       nudge_f4d = .false.
@@ -390,7 +388,6 @@
 ! Local:
       integer :: i,n,ier
       character(len=16) :: logname
-      real :: rday,rhour,rmin,rval
 !
 ! Get login name:
       logname = ' '
@@ -526,7 +523,6 @@
       endif
 !
 ! Number of tasks in lat,lon dimensions (ntask_lat*ntask_lon must == ntask):
-#ifdef MPI
       if (ntask_lat==ispval.or.ntask_lon==ispval) then
 !
 ! Choose number of tasks in lon,lat dimensions:
@@ -562,7 +558,6 @@
      |    ' ntask_maglat=',i3,' (ntask=',i3,')')")
      |    ntask_maglon,ntask_maglat,ntask
       endif
-#endif
 !
 ! ncep data file:
       if (len_trim(ncep_ncfile) > 0) call expand_path(ncep_ncfile)
@@ -660,7 +655,7 @@
       call expand_path(vvdata)
 !
 ! nudging data files:
-      if (len_trim(nudge_ncpre) > 0) call expand_path(nudge_ncpre)
+      if (len_trim(nudge_ncfile) > 0) call expand_path(nudge_ncfile)
 !
 ! If enforce_opfloor > 0, then enforce O+ floor (see oplus.F)
 !
@@ -795,9 +790,8 @@
 ! Validate primary history inputs:
 !
 ! Local:
-      integer :: n,i,ii,nhists,nsteps,nsteps_hist(mxseries),
-     |  nstarts,nstops,nstep_total,nsrc,
-     |  nout,nhists_total,modeltime(4),nfiles_prim
+      integer :: n,i,nhists,nsteps,nsteps_hist(mxseries),
+     |  nstarts,nstops,nstep_total,nsrc,nout,nhists_total,nfiles_prim
       integer(kind=8) :: step8,
      |  nsec_start(mxseries),nsec_stop(mxseries),
      |  nsec_hist (mxseries)
@@ -812,38 +806,38 @@
       step8 = step
 !
 ! Model start time(s):
-      n = size(start)-count(start==ispval)
+      n = size(pristart)-count(pristart==ispval)
       if (mod(n,4) /= 0) then
-        write(6,"(/,'>>> INPUT: START must be given as series of ',
+        write(6,"(/,'>>> INPUT: PRISTART must be given as series of ',
      |    '4-integer triplet times',/,11x,'(day,hr,min,sec).',/)")
-        call shutdown('START')
+        call shutdown('PRISTART')
       endif 
       nstarts = n/4 ! number of start times given
       if (nstarts < 1 .or. nstarts > mxseries) then
         write(6,"(/,'>>> INPUT: At least one and a maximum of ',i3,
-     |    ' 4-integer START times are allowed.',/)") mxseries
-        call shutdown('START')
+     |    ' 4-integer PRISTART times are allowed.',/)") mxseries
+        call shutdown('PRISTART')
       endif
       do i=1,nstarts
-        call validate_mtime(start(:,i),mxday,'START')
+        call validate_mtime(pristart(:,i),mxday,'PRISTART')
       enddo
 !
 ! Start time(s) must be multiple of step, and must increase: 
       nsec_start(:) = 0
       do i=1,nstarts
-        nsec_start(i) = mtime_to_nsec(start(:,i))
+        nsec_start(i) = mtime_to_nsec(pristart(:,i))
         if (mod(nsec_start(i),step8) /= 0) then
-          write(6,"(/,'>>> INPUT: START time ',i1,' must be a ',
-     |      'multiple of step:',/,11x,'START=',4i4,' STEP=',i4,/)")
-     |      i,start(:,i),step
-          call shutdown('START')
+          write(6,"(/,'>>> INPUT: PRISTART time ',i1,' must be a ',
+     |      'multiple of step:',/,11x,'PRISTART=',4i4,' STEP=',i4,/)")
+     |      i,pristart(:,i),step
+          call shutdown('PRISTART')
         endif
         if (i > 1) then
           if (nsec_start(i-1) > nsec_start(i)) then
-            write(6,"(/,'>>> INPUT: START times must increase.',/,
-     |        11x,'START ',i2,' = ',4i4,' START ',i2,' = ',4i4,
-     |        /)") i-1,start(:,i-1),i,start(:,i)
-            call shutdown('START')
+            write(6,"(/,'>>> INPUT: PRISTART times must increase.',/,
+     |        11x,'PRISTART ',i2,' = ',4i4,' PRISTART ',i2,' = ',4i4,
+     |        /)") i-1,pristart(:,i-1),i,pristart(:,i)
+            call shutdown('PRISTART')
           endif
         endif
       enddo 
@@ -852,51 +846,51 @@
 !   day must be the same as the starting calendar day.
 !
       if (calendar_advance > 0) then
-        if (start(1,1) /= start_day) then
+        if (pristart(1,1) /= start_day) then
           write(6,"(/,'>>> INPUT: Starting calendar day START_DAY =',
      |      i4)") start_day
-          write(6,"(11x,'Starting model day START(1)=',i4)")
-     |      start(1,1)
+          write(6,"(11x,'Starting model day PRISTART(1)=',i4)")
+     |      pristart(1,1)
           write(6,"(11x,'CALENDAR_ADVANCE = ',i2)") calendar_advance
           write(6,"('If the model is to be advanced in calendar time,',
      |      ' the starting model day',/,'  must be equal to the ',
      |      'starting calendar day.',/)")
-          call shutdown('START')
+          call shutdown('PRISTART')
         endif
       endif
 !
 ! Stop time(s):
-      n = size(stop)-count(stop==ispval)
+      n = size(pristop)-count(pristop==ispval)
       if (mod(n,4) /= 0) then
-        write(6,"(/,'>>> INPUT: STOP must be given as series of ',
+        write(6,"(/,'>>> INPUT: PRISTOP must be given as series of ',
      |    '4-integer triplet times (day,hr,min,sec).',/)")
-        call shutdown('STOP')
+        call shutdown('PRISTOP')
       endif 
       nstops = n/4 ! number of stop times given
       if (nstops < 1 .or. nstops > mxseries) then
         write(6,"(/,'>>> INPUT: At least one and a maximum of ',i2,
-     |    ' 4-integer STOP times are allowed.',/)") mxseries
-        call shutdown('STOP')
+     |    ' 4-integer PRISTOP times are allowed.',/)") mxseries
+        call shutdown('PRISTOP')
       endif
       do i=1,nstops
-        call validate_mtime(stop(:,i),mxday,'STOP')
+        call validate_mtime(pristop(:,i),mxday,'PRISTOP')
       enddo
 !
 ! Stop time(s) must be multiple of step, and must increase: 
       nsec_stop(:) = 0
       do i=1,nstops
-        nsec_stop(i) = mtime_to_nsec(stop(:,i))
+        nsec_stop(i) = mtime_to_nsec(pristop(:,i))
         if (mod(nsec_stop(i),step8) /= 0) then
-          write(6,"(/,'>>> INPUT: STOP time ',i1,' must be a ',
-     |      'multiple of step:',/,11x,'STOP=',4i4,' STEP=',i4,/)")
-     |      i,stop(:,i),step
-          call shutdown('STOP')
+          write(6,"(/,'>>> INPUT: PRISTOP time ',i1,' must be a ',
+     |      'multiple of step:',/,11x,'PRISTOP=',4i4,' STEP=',i4,/)")
+     |      i,pristop(:,i),step
+          call shutdown('PRISTOP')
         endif
         if (i > 1) then
           if (nsec_stop(i-1) > nsec_stop(i)) then
-            write(6,"(/,'>>> INPUT: STOP times must increase.',/,
-     |        11x,'STOP 1 =',4i4,' STOP 2 =',4i4,/)") stop
-            call shutdown('STOP')
+            write(6,"(/,'>>> INPUT: PRISTOP times must increase.',/,
+     |        11x,'PRISTOP 1 =',4i4,' PRISTOP 2 =',4i4,/)") pristop
+            call shutdown('PRISTOP')
           endif
         endif
       enddo 
@@ -905,53 +899,53 @@
 ! Note: this module does not cross year boundaries in a single run.
 !       To cross a year boundary, make a run up to day 365 or 366,
 !       then use that file as the source (source_start=365 or 366), 
-!       for a new run with START=1,0,0,0. (note mxday==366)
+!       for a new run with PRISTART=1,0,0,0. (note mxday==366)
 !
       if (nsec_start(1)==nsec_stop(1)) then
-        write(6,"(/,'NOTE input: start(1)==stop(1): no time steps',
-     |    ' will be taken this run.')")
+        write(6,"(/,'NOTE input: pristart(1)==pristop(1): ',
+     |    'no time steps will be taken this run.')")
       else
         do i=1,nstops
           if (nsec_start(i) >= nsec_stop(i)) then
-            write(6,"(/,'>>> INPUT: STOP time ',i1,' must be > ',
-     |        'START time',/,11x,'STOP time ',i1,' = ',4i4,
-     |        ' START =',4i4,/)") i,i,stop(:,i),start(:,i)
-            call shutdown('START/STOP')
+            write(6,"(/,'>>> INPUT: PRISTOP time ',i1,' must be > ',
+     |        'PRISTART time',/,11x,'PRISTOP time ',i1,' = ',4i4,
+     |        ' PRISTART =',4i4,/)") i,i,pristop(:,i),pristart(:,i)
+            call shutdown('PRISTART/PRISTOP')
           endif
         enddo
       endif
 !
 ! History write frequencies:
-      n = size(hist)-count(hist==ispval)
+      n = size(prihist)-count(prihist==ispval)
       if (mod(n,4) /= 0) then
-        write(6,"(/,'>>> INPUT: HIST must be given as series of ',
+        write(6,"(/,'>>> INPUT: PRIHIST must be given as series of ',
      |    '4-integer triplet times (day,hr,min,sec).',/)")
-        call shutdown('HIST')
+        call shutdown('PRIHIST')
       endif 
       nhists = n/4 ! number of hist times given
       if (nhists < 1 .or. nhists > mxseries) then
         write(6,"(/,'>>> INPUT: At least one and a maximum of ',i2,
-     |    ' 4-integer HIST times are allowed.',/)") mxseries
-        call shutdown('HIST')
+     |    ' 4-integer PRIHIST times are allowed.',/)") mxseries
+        call shutdown('PRIHIST')
       endif
       do i=1,nhists
-        call validate_mtime(hist(:,i),mxday,'HIST')
+        call validate_mtime(prihist(:,i),mxday,'PRIHIST')
       enddo
 !
 ! History write frequencies must be multiple of step: 
       nsec_hist(:) = 0
       do i=1,nhists
-        nsec_hist(i) = mtime_to_nsec(hist(:,i))
+        nsec_hist(i) = mtime_to_nsec(prihist(:,i))
         if (nsec_hist(i)==0) then
-          write(6,"(/,'>>> INPUT: HIST write frequency ',i1,
+          write(6,"(/,'>>> INPUT: PRIHIST write frequency ',i1,
      |      ' must be > 0',/)") i
-          call shutdown('HIST')
+          call shutdown('PRIHIST')
         endif
         if (mod(nsec_hist(i),step8) /= 0) then
-          write(6,"(/,'>>> INPUT: HIST time ',i1,' must be a ',
-     |      'multiple of step:',/,11x,'HIST=',4i4,' STEP=',i4,/)")
-     |      i,hist(:,i),step
-          call shutdown('HIST')
+          write(6,"(/,'>>> INPUT: PRIHIST time ',i1,' must be a ',
+     |      'multiple of step:',/,11x,'PRIHIST=',4i4,' STEP=',i4,/)")
+     |      i,prihist(:,i),step
+          call shutdown('PRIHIST')
         endif
       enddo 
 !
@@ -959,13 +953,13 @@
       if (nstarts /= nstops .or. nstarts /= nhists .or. 
      |    nstops  /= nhists) then
         write(6,"(/,'>>> INPUT: must provide same number of times ',
-     |    'for',/,11x,'START, STOP, and HIST.')")
+     |    'for',/,11x,'PRISTART, PRISTOP, and PRIHIST.')")
         write(6,"(11x,'nstarts=',i3,' nstops=',i3,' nhists=',i3)")
      |    nstarts,nstops,nhists
         call shutdown('ntimes')
       endif
 !
-! Number of steps in each time series must be a multiple of HIST:
+! Number of steps in each time series must be a multiple of PRIHIST:
       do i=1,nstarts
         if (i==1) then
           nsteps = (nsec_stop(i)-nsec_start(i))/step
@@ -976,13 +970,13 @@
         if (mod(nsteps,nsteps_hist(i)) /= 0) then
           write(6,"(/,'>>> INPUT: number of steps in time series ',
      |      i1,' must be multiple of the ',/,11x,'number of steps',
-     |      ' in HIST ',i1,'.')") i,i
+     |      ' in PRIHIST ',i1,'.')") i,i
           write(6,"(11x,'nsteps ',i1,' = ',i6,' nsteps_hist ',i1,
      |      ' = ',i3)") i,nsteps,i,nsteps_hist(i)
-          write(6,"(11x,'START',i1,' = ',4i4,' STOP',i1,' = ',4i4,
-     |      ' HIST',i1,' = ',4i4,/)") i,start(:,i),i,stop(:,i),
-     |      i,hist(:,i)
-          call shutdown('HIST')
+          write(6,"(11x,'PRISTART',i1,' = ',4i4,
+     |      ' PRISTOP',i1,' = ',4i4,' PRIHIST',i1,' = ',4i4,/)")
+     |      i,pristart(:,i),i,pristop(:,i),i,prihist(:,i)
+          call shutdown('PRIHIST')
         endif
       enddo ! i=1,nstarts
 !
@@ -992,11 +986,11 @@
           if (nsec_start(i) < nsec_stop(i-1)) then
             write(6,"(/,'>>> INPUT: primary history time series',
      |        ' cannot overlap.')")
-            write(6,"(11x,'For series ',i2,': START=',4i4,
-     |        ' STOP=',4i4)") i-1,start(:,i-1),start(:,i-1)
-            write(6,"(11x,'For series ',i2,': START=',4i4,
-     |        ' STOP=',4i4,/)") i,start(:,i),stop(:,i)
-            call shutdown('START/STOP')
+            write(6,"(11x,'For series ',i2,': PRISTART=',4i4,
+     |        ' PRISTOP=',4i4)") i-1,pristart(:,i-1),pristart(:,i-1)
+            write(6,"(11x,'For series ',i2,': PRISTART=',4i4,
+     |        ' PRISTOP=',4i4,/)") i,pristart(:,i),pristop(:,i)
+            call shutdown('PRISTART/PRISTOP')
           endif
         enddo
       endif
@@ -1023,22 +1017,22 @@
           write(6,"(/,'>>> INPUT: need 4 values for SOURCE_START ',
      |      'time (day,hour,minute,secend),',/,11x,
      |      'e.g.: SOURCE_START=1,0,0,0',/)")
-          call shutdown('START')
+          call shutdown('PRISTART')
         endif
         call validate_mtime(source_start,mxday,'SOURCE_START')
 !
 ! Model start time hr,min must be same as source_start hr,min,sec:
 ! (days can be different)
-        if (start(2,1) /= source_start(2) .or.
-     |      start(3,1) /= source_start(3) .or.
-     |      start(4,1) /= source_start(4)) then
-          write(6,"(/,'>>> INPUT: START time (hr,min,sec) ',
+        if (pristart(2,1) /= source_start(2) .or.
+     |      pristart(3,1) /= source_start(3) .or.
+     |      pristart(4,1) /= source_start(4)) then
+          write(6,"(/,'>>> INPUT: PRISTART time (hr,min,sec) ',
      |      'must be the same as SOURCE_START time.')")
-          write(6,"('  START        = ',4i4)") start(:,1)
+          write(6,"('  PRISTART    = ',4i4)") pristart(:,1)
           write(6,"('  SOURCE_START = ',4i4)") source_start(:)
-          write(6,"('  (START and SOURCE_START days can be ',
+          write(6,"('  (PRISTART and SOURCE_START days can be ',
      |      'different)',/)")
-          call shutdown('START')
+          call shutdown('PRISTART')
         endif
       endif
 !
@@ -1110,17 +1104,14 @@
 ! Validate secondary history inputs:
 !
 ! Local:
-      integer :: n,i,ii,nstarts,nstops,nhists,nout,nsteps,
-     |  nsteps_hist(mxseries_sech),nsechs_total,nseriesp,nflds_sech,
-     |  nhists_total,nfiles_sech,nonblank,nsrc,mtime(4)
+      integer :: n,i,nstarts,nstops,nhists,nout,nsteps,
+     |  nsteps_hist(mxseries_sech),nseriesp,nflds_sech,
+     |  nhists_total,nfiles_sech,nonblank
       integer(kind=8) :: step8,
      |  nsec_start(mxseries_sech),nsec_stop(mxseries_sech),
      |  nsec_hist (mxseries_sech)
       character(len=1024) :: ch1024
       character(len=1024) :: hvols(mxhvols)
-      character(len=16) ::
-     |  secflds_tmp(mxfsech)
-      logical :: found
 !
 ! External:
       integer,external :: numfiles
@@ -1202,20 +1193,20 @@
 !
 ! Secondary start times must be >= first primary start times and
 ! <= last primary stop time:
-      nseriesp = (size(start)-count(start==ispval))/4
+      nseriesp = (size(pristart)-count(pristart==ispval))/4
       do i=1,nstarts
-        if (nsec_start(i) < mtime_to_nsec(start(:,1))) then
+        if (nsec_start(i) < mtime_to_nsec(pristart(:,1))) then
           write(6,"(/,'>>> INPUT: all secondary start times SECSTART',
-     |      ' must be >= first model START time.')")
-          write(6,"(11x,'First model START = ',4i4,' SECSTART ',i2,
-     |      ' = ',4i4,/)") start(:,1),i,secstart(:,i)
+     |      ' must be >= first model PRISTART time.')")
+          write(6,"(11x,'First model PRISTART = ',4i4,' SECSTART ',i2,
+     |      ' = ',4i4,/)") pristart(:,1),i,secstart(:,i)
           call shutdown('SECSTART')
         endif
-        if (nsec_start(i) > mtime_to_nsec(stop(:,nseriesp))) then
+        if (nsec_start(i) > mtime_to_nsec(pristop(:,nseriesp))) then
           write(6,"(/,'>>> INPUT: all secondary start times SECSTART',
-     |      ' must be <= last model STOP time.')")
-          write(6,"(11x,' SECSTART ',i2,' = ',4i4,' last STOP=',
-     |      4i4)") secstart(:,1),i,stop(:,nseriesp)
+     |      ' must be <= last model PRISTOP time.')")
+          write(6,"(11x,' SECSTART ',i2,' = ',4i4,' last PRISTOP=',
+     |      4i4)") secstart(:,1),i,pristop(:,nseriesp)
           call shutdown('SECSTART')
         endif
       enddo
@@ -1273,11 +1264,12 @@
 ! Secondary stop times must be <= last primary stop time:
       nstarts = n/4 ! number of start times given
       do i=1,nstarts
-        if (nsec_stop(i) > mtime_to_nsec(stop(:,nseriesp))) then
+        if (nsec_stop(i) > mtime_to_nsec(pristop(:,nseriesp))) then
           write(6,"(/,'>>> INPUT: all secondary stop times must be',
      |      ' <= final model stop time.')")
           write(6,"('For sech time series ',i2,': SECSTOP=',4i4,
-     |      ' Model STOP = ',4i4,/)") i,secstop(:,i),stop(:,nseriesp)
+     |      ' Model PRISTOP = ',4i4,/)")
+     |      i,secstop(:,i),pristop(:,nseriesp)
           call shutdown('SECSTOP')
         endif
       enddo
@@ -1320,20 +1312,20 @@
 ! Secondary start time cannot be same as start time if initial run,
 ! since sech fields would be zero (this is new as of 12/14/11):
 !
-! 1/5/12: Go back to allowing SECSTART==START for initial runs,
+! 1/5/12: Go back to allowing SECSTART==PRISTART for initial runs,
 !   so secondary histories can have non-zero "prognostic" fields 
 !   in first history copied from SOURCE (any fields saved by sub 
 !   addfld fields will be zero in this copied history, as before).
-!   Tag 1.94.2 will have this, i.e., allowing SECSTART==START for
+!   Tag 1.94.2 will have this, i.e., allowing SECSTART==PRISTART for
 !   initial runs.
 !
 !     nsrc = len_trim(source)
-!     if (nsrc > 0.and.nsec_start(1)==mtime_to_nsec(start(:,1))) then      
+!     if (nsrc > 0.and.nsec_start(1)==mtime_to_nsec(pristart(:,1))) then      
 !       write(6,"(/,'>>> INPUT: If an initial run, secondary start ',
-!    |    ' time SECSTART must not be same as START time.')")
+!    |    ' time SECSTART must not be same as PRISTART time.')")
 !       call nsecs_to_modeltime(nsec_start(1)+nsec_hist(1),mtime)
 !       write(6,"('Please set SECSTART to first SECHIST interval ',
-!    |    'after START time (',4i4,')')") mtime
+!    |    'after PRISTART time (',4i4,')')") mtime
 !       call shutdown('SECSTART')
 !     endif
 !
@@ -1566,14 +1558,12 @@
 
       write(6,"('  step    =',i4,' (model timestep (seconds))',
      |  i4)") step
-#ifdef MPI      
       write(6,"('  ntask_lon = ',i2,' (number of mpi tasks in ',
      |  'longitude dimension)')") ntask_lon
       write(6,"('  ntask_lat = ',i2,' (number of mpi tasks in ',
      |  'latitude  dimension)')") ntask_lat
       write(6,"('  total tasks = ntask_lon*ntask_lat = ',i4)")
      |  ntask
-#endif
 !
 ! Primary histories:
       if (len_trim(source) > 0) then
@@ -1587,15 +1577,15 @@
       write(6,"('  output (primary history output files) = ',
      |  /,(4x,a,', ',a))") 
      |  (trim(output(i)),i=1,n)
-      n = (size(start)-count(start==ispval))/4
-      write(6,"('  start (model start times) =',
-     |  /,4(4x,i3,',',i2,',',i2,',',i2))") (start(:,i),i=1,n)
-      n = (size(stop)-count(stop==ispval))/4
-      write(6,"('  stop (model stop times) =',
-     |  /,4(4x,i3,',',i2,',',i2,',',i2))") (stop(:,i),i=1,n)
-      n = (size(hist)-count(hist==ispval))/4
-      write(6,"('  hist (primary history disk write frequencies) =',
-     |  /,4(4x,i3,',',i2,',',i2,',',i2))") (hist(:,i),i=1,n)
+      n = (size(pristart)-count(pristart==ispval))/4
+      write(6,"('  pristart (model start times) =',
+     |  /,4(4x,i3,',',i2,',',i2,',',i2))") (pristart(:,i),i=1,n)
+      n = (size(pristop)-count(pristop==ispval))/4
+      write(6,"('  pristop (model stop times) =',
+     |  /,4(4x,i3,',',i2,',',i2,',',i2))") (pristop(:,i),i=1,n)
+      n = (size(prihist)-count(prihist==ispval))/4
+      write(6,"('  prihist (primary history disk write frequencies) =',
+     |  /,4(4x,i3,',',i2,',',i2,',',i2))") (prihist(:,i),i=1,n)
       write(6,"('  Maxmimum number of histories per primary file = ',
      |  i3)") mxhist_prim
 !
@@ -1856,26 +1846,28 @@
             ntimes = ntimes+1
           endif
         enddo ! i=1,mxtimes
-        nsec_start = mtime_to_nsec(start(:,1)) ! model start time
-        nsec_stop = mtime_to_nsec(stop(:,1))   ! model stop time
+        nsec_start = mtime_to_nsec(pristart(:,1)) ! model start time
+        nsec_stop = mtime_to_nsec(pristop(:,1))   ! model stop time
 !
 ! First time must be model start time:
         if (ntimes > 0) then
           nsec = mtime_to_nsec(int(timedep(1:4,1)))
           if (nsec /= nsec_start) then
             write(6,"(/,'>>> INPUT: Please provide first value of ',a,
-     |        ' at model START time.')") trim(name)
+     |        ' at model PRISTART time.')") trim(name)
             call shutdown('validate_timedep')
           endif
 !
-! All times must be between START and STOP times:
+! All times must be between PRISTART and PRISTOP times:
           do i=1,ntimes
             nsec = mtime_to_nsec(int(timedep(1:4,i)))
             if (nsec < nsec_start .or. 
      |          nsec > nsec_stop) then
               write(6,"(/,'>>> INPUT: ',a,' time ',4i4,' is outside ',
-     |          'model START/STOP times: START=',4i4,' STOP=',4i4)")
-     |          trim(name),int(timedep(1:4,i)),start(:,1),stop(:,1)
+     |          'model PRISTART/PRISTOP times: PRISTART=',4i4,
+     |          ' PRISTOP=',4i4)")
+     |          trim(name),int(timedep(1:4,i)),
+     |          pristart(:,1),pristop(:,1)
               call shutdown('validate_timedep')
             endif 
           enddo
@@ -2376,15 +2368,7 @@
         enddo
 
 ! check for the compliance of nudging parameters
-        if (count(len_trim(nudge_ncfile)>0) > 0) then
-          if (count(len_trim(nudge_flds)>0) == 0) then
-            nudge_flds(1) = 'TN'
-            nudge_flds(2) = 'UN'
-            nudge_flds(3) = 'VN'
-            nudge_flds(4) = 'Z'
-          endif
-          if (.not. nudge_lbc .and. nudge_f4d)
-     |      call shutdown('NUDGE_LBC must be TRUE is NUDGE_F4D is TRUE')
+        if (len_trim(nudge_ncfile) > 0) then
           if (nudge_refdate(1) == ispval) nudge_refdate(1) = start_year
           if (nudge_refdate(2) == ispval) nudge_refdate(2) = start_day
           if (any(nudge_sponge < 0))
@@ -2393,16 +2377,15 @@
           if (any(nudge_delta <= 0))
      |      call shutdown('NUDGE_DELTA must be positive')
           where (nudge_delta == spval) nudge_delta = 1
-          if (any(nudge_power < 0))
-     |      call shutdown('NUDGE_POWER must be non-negative')
-          where (nudge_power == spval) nudge_power = 0
+          if (any(nudge_power <= 0))
+     |      call shutdown('NUDGE_POWER must be positive')
+          where (nudge_power == spval) nudge_power = 1
           if (nudge_alpha < 0)
      |      call shutdown('NUDGE_ALPHA must be non-negative')
           if (nudge_alpha == spval) nudge_alpha = 0
         else
-          if (len_trim(nudge_ncpre)>0 .or. len_trim(nudge_ncpost)>0 .or.
-     |      any(len_trim(nudge_flds)>0) .or. any(nudge_level) .or.
-     |      nudge_lbc .or. nudge_f4d .or.
+          if (any(len_trim(nudge_flds)>0) .or. any(nudge_level) .or.
+     |      any(nudge_lbc) .or. any(nudge_f4d) .or.
      |      nudge_use_refdate .or. any(nudge_refdate/=ispval) .or.
      |      any(nudge_sponge/=spval) .or. any(nudge_delta/=spval) .or.
      |      any(nudge_power/=spval) .or. nudge_alpha/=spval)
@@ -2417,10 +2400,10 @@
      |    any(glon0_ng/=spval) .or. any(dlon_ng/=spval) .or.
      |    any(len_trim(fileout_ng)>0) .or.
      |    any(len_trim(varout_ng)>0) .or.
-     |    count(len_trim(nudge_ncfile)>0) > 0 .or.
-     |    len_trim(nudge_ncpre)>0 .or. len_trim(nudge_ncpost)>0 .or.
-     |    any(len_trim(nudge_flds)>0) .or. any(nudge_level) .or.
-     |    nudge_lbc .or. nudge_f4d .or.
+     |    len_trim(nudge_ncfile)>0 .or.
+     |    any(len_trim(nudge_flds)>0) .or.
+     |    any(nudge_lbc) .or. any(nudge_f4d) .or.
+     |    any(nudge_level) .or.
      |    nudge_use_refdate .or. any(nudge_refdate/=ispval) .or.
      |    any(nudge_sponge/=spval) .or. any(nudge_delta/=spval) .or.
      |    any(nudge_power/=spval) .or. nudge_alpha/=spval)

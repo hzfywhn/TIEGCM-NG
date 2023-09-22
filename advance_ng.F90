@@ -4,23 +4,23 @@ recursive subroutine advance_ng(i_ng)
 ! a recursive subroutine is suitable for such stack-like procedures
 
   use params_module,only: n_ng,nlevp1_ng
-  use input_module,only: nstep_ng,nstep_sub,nudge_level,nudge_lbc,nudge_f4d,nudge_alpha
+  use input_module,only: nstep_ng,nstep_sub,nudge_level,nudge_f4d,nudge_alpha
   use fields_ng_module,only: flds,nf3din,nf2din,itp,itc,modeltime,step
   use level_outer_ng_module,only: map_in_1=>map_in,map_out_1=>map_out,set_bndry_1=>set_bndry
   use levels_inner_ng_module,only: map_in,map_out,set_bndry
-  use nudge_ng_module,only: nudge_fields=>flds,nlb,nf4d,time,itime,wrap,lb_idx,f4d_idx
+  use nudge_ng_module,only: nudge_fields=>flds,nudge_lbc=>lbc_flag,nlb,nf4d,time,itime,wrap,f4d_idx
   use output_ng_module,only: addfld
   implicit none
 
   integer,intent(in) :: i_ng
 
-  integer :: istep,ifld,nk,k,latbeg,latend,lonbeg,lonend,offbeg,offend,lonbeg1,lonend1,itmp
+  integer :: istep,ifld,nk,k,maxlev,latbeg,latend,lonbeg,lonend,offbeg,offend,lonbeg1,lonend1,itmp
   real :: delta,fac1,fac2
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: omega,omegai,wn
-  real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: tmp_lbc
-  real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend) :: wt,ext_fld
+  real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend) :: wt,ext_fld,tmp_lbc
+  real,dimension(nudge_fields(i_ng)%maxlev,flds(i_ng)%lond0:flds(i_ng)%lond1, &
+    nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend) :: tmp_f4d
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend,nlb) :: nclbc
-  real,dimension(nudge_fields(i_ng)%maxlev,flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: tmp_f4d
   real,dimension(nudge_fields(i_ng)%maxlev,flds(i_ng)%lond0:flds(i_ng)%lond1, &
     nudge_fields(i_ng)%latbeg:nudge_fields(i_ng)%latend,nf4d) :: ncf4d
   external :: interp_fields_ng,addiag_ng,hdif12_ng,dynamics_ng
@@ -42,7 +42,8 @@ recursive subroutine advance_ng(i_ng)
 ! index 0 is either from initialization or the previous iteration
   call interp_fields_ng(i_ng)
 
-  if (nudge_lbc .or. nudge_f4d) then
+  if (any(nudge_lbc) .or. any(nudge_f4d)) then
+    maxlev = nudge_fields(i_ng)%maxlev
     latbeg = nudge_fields(i_ng)%latbeg
     latend = nudge_fields(i_ng)%latend
     lonbeg = nudge_fields(i_ng)%lonbeg
@@ -57,40 +58,40 @@ recursive subroutine advance_ng(i_ng)
     modeltime(i_ng) = modeltime(i_ng)+step(i_ng)
 
 ! each sub-cycle starts with replacing lower boundary with external fields
-    if (nudge_lbc) then
+    if (any(nudge_lbc)) then
       if (nudge_level(i_ng) .and. latbeg<latend .and. &
         time(itime)<=modeltime(i_ng) .and. modeltime(i_ng)<=time(itime+1)) then
 
         delta = time(itime+1)-time(itime)
         fac1 = (time(itime+1)-modeltime(i_ng))/delta
         fac2 = (modeltime(i_ng)-time(itime))/delta
-        nclbc = fac1*nudge_fields(i_ng)%lbc(:,:,1,:)+fac2*nudge_fields(i_ng)%lbc(:,:,2,:)
 
+        nclbc = fac1*nudge_fields(i_ng)%lbc(:,:,1,:)+fac2*nudge_fields(i_ng)%lbc(:,:,2,:)
         wt = nudge_alpha*nudge_fields(i_ng)%hori_weight
 
         do ifld = 1,nlb
-          if (lb_idx(ifld) /= 0) then
-            tmp_lbc = flds(i_ng)%f2d_save(:,:,istep,ifld)
-            ext_fld = wt*nclbc(:,:,ifld)+(1-wt)*tmp_lbc(:,latbeg:latend)
+          if (nudge_lbc(ifld)) then
+            tmp_lbc = flds(i_ng)%f2d_save(:,latbeg:latend,istep,ifld)
+            ext_fld = wt*nclbc(:,:,ifld)+(1-wt)*tmp_lbc
 
             if (wrap) then
-              tmp_lbc(:,latbeg:latend) = ext_fld
+              tmp_lbc = ext_fld
             else
               if (lonbeg<lonend .and. offbeg==offend) &
-                tmp_lbc(lonbeg:lonend,latbeg:latend) = ext_fld(lonbeg:lonend,:)
+                tmp_lbc(lonbeg:lonend,:) = ext_fld(lonbeg:lonend,:)
 
               if (lonbeg<lonend .and. offbeg+1==offend) then
-                tmp_lbc(lonbeg:lonend1,latbeg:latend) = ext_fld(lonbeg:lonend1,:)
-                tmp_lbc(lonbeg1:lonend,latbeg:latend) = ext_fld(lonbeg1:lonend,:)
+                tmp_lbc(lonbeg:lonend1,:) = ext_fld(lonbeg:lonend1,:)
+                tmp_lbc(lonbeg1:lonend,:) = ext_fld(lonbeg1:lonend,:)
               endif
 
               if (lonbeg>lonend .and. offbeg==offend+1) then
-                tmp_lbc(lonbeg:flds(i_ng)%lond1,latbeg:latend) = ext_fld(lonbeg:flds(i_ng)%lond1,:)
-                tmp_lbc(flds(i_ng)%lond0:lonend,latbeg:latend) = ext_fld(flds(i_ng)%lond0:lonend,:)
+                tmp_lbc(lonbeg:flds(i_ng)%lond1,:) = ext_fld(lonbeg:flds(i_ng)%lond1,:)
+                tmp_lbc(flds(i_ng)%lond0:lonend,:) = ext_fld(flds(i_ng)%lond0:lonend,:)
               endif
             endif
 
-            flds(i_ng)%f2d_save(:,:,istep,ifld) = tmp_lbc
+            flds(i_ng)%f2d_save(:,latbeg:latend,istep,ifld) = tmp_lbc
           endif
         enddo
       endif
@@ -147,7 +148,7 @@ recursive subroutine advance_ng(i_ng)
     wn = omegai*flds(i_ng)%scht(:,:,:,itp(i_ng))
     call addfld(wn,'WN',i_ng)
 
-    if (nudge_f4d) then
+    if (any(nudge_f4d)) then
       if (nudge_level(i_ng) .and. latbeg<latend .and. &
         time(itime)<=modeltime(i_ng) .and. modeltime(i_ng)<=time(itime+1)) then
 
@@ -157,31 +158,33 @@ recursive subroutine advance_ng(i_ng)
         ncf4d = fac1*nudge_fields(i_ng)%f4d(:,:,:,1,:)+fac2*nudge_fields(i_ng)%f4d(:,:,:,2,:)
 
         do ifld = 1,nf4d
-          tmp_f4d = flds(i_ng)%f4d(f4d_idx(ifld))%data(1:nudge_fields(i_ng)%maxlev,:,:,itc(i_ng))
+          if (nudge_f4d(ifld)) then
+            tmp_f4d = flds(i_ng)%f4d(f4d_idx(ifld))%data(1:maxlev,:,latbeg:latend,itc(i_ng))
 
-          do k = 1,nudge_fields(i_ng)%maxlev
-            wt = nudge_alpha*nudge_fields(i_ng)%hori_weight*nudge_fields(i_ng)%vert_weight(k,ifld)
-            ext_fld = wt*ncf4d(k,:,:,ifld)+(1-wt)*tmp_f4d(k,:,latbeg:latend)
+            do k = 1,maxlev
+              wt = nudge_alpha*nudge_fields(i_ng)%hori_weight*nudge_fields(i_ng)%vert_weight(k,ifld)
+              ext_fld = wt*ncf4d(k,:,:,ifld)+(1-wt)*tmp_f4d(k,:,:)
 
-            if (wrap) then
-              tmp_f4d(k,:,latbeg:latend) = ext_fld
-            else
-              if (lonbeg<lonend .and. offbeg==offend) &
-                tmp_f4d(k,lonbeg:lonend,latbeg:latend) = ext_fld(lonbeg:lonend,:)
+              if (wrap) then
+                tmp_f4d(k,:,:) = ext_fld
+              else
+                if (lonbeg<lonend .and. offbeg==offend) &
+                  tmp_f4d(k,lonbeg:lonend,:) = ext_fld(lonbeg:lonend,:)
 
-              if (lonbeg<lonend .and. offbeg+1==offend) then
-                tmp_f4d(k,lonbeg:lonend1,latbeg:latend) = ext_fld(lonbeg:lonend1,:)
-                tmp_f4d(k,lonbeg1:lonend,latbeg:latend) = ext_fld(lonbeg1:lonend,:)
+                if (lonbeg<lonend .and. offbeg+1==offend) then
+                  tmp_f4d(k,lonbeg:lonend1,:) = ext_fld(lonbeg:lonend1,:)
+                  tmp_f4d(k,lonbeg1:lonend,:) = ext_fld(lonbeg1:lonend,:)
+                endif
+
+                if (lonbeg>lonend .and. offbeg==offend+1) then
+                  tmp_f4d(k,lonbeg:flds(i_ng)%lond1,:) = ext_fld(lonbeg:flds(i_ng)%lond1,:)
+                  tmp_f4d(k,flds(i_ng)%lond0:lonend,:) = ext_fld(flds(i_ng)%lond0:lonend,:)
+                endif
               endif
+            enddo
 
-              if (lonbeg>lonend .and. offbeg==offend+1) then
-                tmp_f4d(k,lonbeg:flds(i_ng)%lond1,latbeg:latend) = ext_fld(lonbeg:flds(i_ng)%lond1,:)
-                tmp_f4d(k,flds(i_ng)%lond0:lonend,latbeg:latend) = ext_fld(flds(i_ng)%lond0:lonend,:)
-              endif
-            endif
-          enddo
-
-          flds(i_ng)%f4d(f4d_idx(ifld))%data(1:nudge_fields(i_ng)%maxlev,:,:,itc(i_ng)) = tmp_f4d
+            flds(i_ng)%f4d(f4d_idx(ifld))%data(1:maxlev,:,latbeg:latend,itc(i_ng)) = tmp_f4d
+          endif
         enddo
       endif
     endif

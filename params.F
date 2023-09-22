@@ -39,8 +39,9 @@
 !
 ! Magnetic grid:
       integer,parameter ::
-     |  nmlat = 97,         ! number of magnetic latitudes
-     |  nmlon = 80,         ! number of magnetic longitudes
+     |  nres_grid = NRES_GRID,
+     |  nmlat = 3*2**nres_grid+1,    ! number of magnetic latitudes
+     |  nmlon = 5*2**(nres_grid-1),  ! number of magnetic longitudes
      |  nmlonp1=nmlon+1,
      |  nmlonp2=nmlon+2,
      |  nmlatp1=nmlat+1,

@@ -35,8 +35,8 @@
 ! Remove comments from namelist file (filename) and write the results
 ! to file unit luout.  See rmcomments for additional documentation.
 !
-! This subroutine was created for CMIT:  when TIEGCM is coupled to
-! CMIT, namelist cannot be reliably read from stdin.
+! This subroutine was created for MAGE:  when TIEGCM is coupled to
+! MAGE, namelist cannot be reliably read from stdin.
 !
 ! Args:
       character(len=*),intent(in) :: filename
@@ -76,9 +76,8 @@
 ! Local:
       character(len=1) :: comchar
       logical isopen
-      integer :: i,lens,ios,compos,nline,nlcfields
+      integer :: ios,compos,nline
       character(len=6400) :: line
-      character(len=64) :: newcfields(30)
 !
       if (luin <= 0) then
         write(6,"('>>> rmcomments: bad input luin=',i5)") luin
@@ -337,8 +336,7 @@
 !
       real,intent(in) :: x 
       integer,intent(in) :: iprint
-      real,parameter :: xmin=-708., xmax=+709., 
-     |  big=.1e305, small=.1e-305
+      real,parameter :: xmin=-708., xmax=+709., big=.1e305
 !
 #if defined(IRIX) || defined(AIX) || defined(OSF1) || defined(SUN) || defined(LINUX)
       if (x >= xmin .and. x <= xmax) then
@@ -635,69 +633,15 @@
 !-------------------------------------------------------------------
       subroutine gethostsname(host)
 !
-! Return a host name, by various methods depending on platform:
+! Return a host name:
 !
       implicit none
 !
 ! Args:
       character(len=*),intent(out) :: host
 !
-! Local:
-      integer :: istat
+      call hostnm(host)
 !
-! External:
-#if defined(UNICOS)
-      integer,external :: gethost
-#endif
-#if defined(AIX)
-      integer,external :: gethostname
-#endif
-!
-      host = ' '
-#ifdef UNICOS
-      istat = gethost(host)
-      if (istat <= 0) then
-        write(6,"('>>> gethostname UNICOS: error ',i4,' from gethost')") 
-     |    istat
-        host = 'unknown'
-      endif
-#elif defined(AIX)
-      istat = gethostname(host) ! this yields "bb0001en" on babyblue
-      if (istat /= 0) then
-        write(6,"('>>> gethostname AIX: error ',i4,
-     |    ' from gethostname')") istat
-        host = 'unknown'
-      endif
-#elif defined(OSF1)
-!
-! There is a gethostname function on prospect (compaq), but apparently 
-! there is no fortran binding.
-      write(6,"('>>> gethostsname: do not know how to get host name ',
-     |  'under OSF1')")
-      host = 'unknown'
-#elif defined(IRIX)
-!
-! Under IRIX, the interactive environment (e.g. utefe) defines $HOST, 
-! whereas the batch environment (e.g. ute) defines $QSUB_HOST.
-! 
-      call getenv('HOST',host)                             ! interactive
-      if (len_trim(host)==0) call getenv('QSUB_HOST',host) ! batch
-      if (len_trim(host)==0) then
-        write(6,"(/,'>>> gethost under IRIX: Cannot get HOST or ',
-     |    'QSUB_HOST environment variables.',/)")
-        host = 'unknown'
-      endif
-#elif defined(SUN) || defined(LINUX)
-      call getenv('HOST',host)
-      if (len_trim(host)==0) then
-        write(6,"(/,'>>> gethost: Cannot get HOST environment ',
-     |    'variable.',/)")
-        host = 'unknown'
-      endif
-#else
-      write(6,"('>>> WARNING gethost: unresolved OS cpp directive.')")
-      host = 'unknown'
-#endif
       end subroutine gethostsname
 !-----------------------------------------------------------------------
       integer function strloc(strarray,nstr,substr)
@@ -821,9 +765,8 @@
 ! timing is started in the first call, and before timing is completed 
 ! in the second call.
 !
-#ifdef MPI
       use mpi
-#endif
+      use mpi_module,only : TIEGCM_WORLD
       implicit none
 !
 ! Args:
@@ -851,18 +794,18 @@
 !
 ! Begin: return time0 as starting time:
       if (trim(begend)=='start'.or.trim(begend)=='begin') then
-#ifdef MPI
-        call mpi_barrier(MPI_COMM_WORLD,ier)
-#endif
+!
+        call mpi_barrier(TIEGCM_WORLD,ier)
+!
 #ifdef AIX
         time0 = rtc()   
 #endif
 !
 ! End: time0 is now input, return time1-time0 in tsec:
       elseif (trim(begend)=='end') then
-#ifdef MPI
-        call mpi_barrier(MPI_COMM_WORLD,ier)
-#endif
+!
+        call mpi_barrier(TIEGCM_WORLD,ier)
+!
 #ifdef AIX
         time1 = rtc()   
         tsec = time1-time0
@@ -871,10 +814,9 @@
       end subroutine timer
 !-----------------------------------------------------------------------
       subroutine getcwdir(cwd)
-#ifdef MPI
-      use mpi_module,only: mytid
+!
+      use mpi_module,only: mytid, TIEGCM_WORLD
       use mpi
-#endif
 !
 ! Return current working directory in cwd:
 !
@@ -883,29 +825,20 @@
       integer,external :: isystem,nextlu
       integer :: istat,lu,ier
 !
-#ifdef MPI
       if (mytid==0) then
         istat = isystem('pwd > cwd')
         if (istat /= 0) write(6,"('>>> WARNING getcwdir: error return ',
      |    'isystem(''pwd > cwd'')')")
       endif
-      call mpi_barrier(MPI_COMM_WORLD,ier)
+      call mpi_barrier(TIEGCM_WORLD,ier)
       lu = nextlu()
       open(lu,file='cwd',status='old')
       read(lu,"(a)") cwd
       close(lu)
-#else
-      istat = isystem('pwd > cwd')
-      if (istat /= 0) write(6,"('>>> WARNING getcwdir: error return ',
-     |  'isystem(''pwd > cwd'')')")
-      lu = nextlu()
-      open(lu,file='cwd',status='old')
-      read(lu,"(a)") cwd
-      close(lu)
-#endif
+!
       end subroutine getcwdir
 !-----------------------------------------------------------------------
-      character(len=*) function trcase(string)
+      character(len=n) function trcase(string,n)
 !
 ! Translate case of input string string, i.e., return string like string,
 ! but with lower case character converted to upper case, and vice-versa.
@@ -913,7 +846,8 @@
       implicit none
 !
 ! Args:
-      character(len=*),intent(in) :: string
+      integer,intent(in) :: n
+      character(len=n),intent(in) :: string
 !
 ! Local:
       character(len=*),parameter :: ucase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -934,10 +868,9 @@
       end function trcase
 !-----------------------------------------------------------------------
       subroutine shutdown(msg)
-      use my_esmf
-#ifdef MPI
+      use my_esmf,only: ESMF_Finalize,ESMF_END_KEEPMPI,ESMF_SUCCESS
       use mpi
-#endif
+      use mpi_module,only: TIEGCM_WORLD
 !
 ! An fatal error has occurred -- shut down the model, including MPI.
 !
@@ -952,7 +885,6 @@
 !
       write(6,"(/,28('>'),' MODEL SHUTDOWN ',28('<'))")
       write(6,"('Shutdown: stop message: ',a)") trim(msg)
-#ifdef MPI
 !
 ! ESMF is nested inside MPI, so shutdown ESMF first:
       call ESMF_Finalize(endflag=ESMF_END_KEEPMPI,rc=ier)
@@ -966,8 +898,8 @@
 ! Shutdown MPI:
       write(6,"('Shutdown calling mpi_abort..')")
       write(6,"(72('>'))")
-      call mpi_abort(MPI_COMM_WORLD,errorcode,ier)
-#endif
+      call mpi_abort(TIEGCM_WORLD,errorcode,ier)
+
       write(6,"(/,'For information, please see TGCM Users Guide at ',
      |  /,'http://www.hao.ucar.edu/modeling/tgcm/doc/userguide')")
       write(6,"(72('>'))")

@@ -1,5 +1,6 @@
 module levels_inner_ng_module
-! data transfer between different levels of nested grid subdomains, see level_outer_ng for descriptions
+! data transfer between adjacent levels of nested grid subdomains, see level_outer_ng for descriptions
+! note the longitudinal wrap is handled in level_outer_ng, thus no need to wrap here
 
   implicit none
 
@@ -13,7 +14,7 @@ module levels_inner_ng_module
     use params_module,only: n_ng,nlon_ng,nlat_ng,glon_ng,glat_ng
     use fields_ng_module,only: flds,domain
     use mpi_module,only: ntask
-    use mpi_f08,only: mpi_proc_null
+    use mpi
 
     integer :: i_ng,itask
     real :: inner_lb,inner_rb,inner_tb,inner_bb, &
@@ -37,7 +38,6 @@ module levels_inner_ng_module
     recv_bndry = mpi_proc_null
 
 ! i_ng==1 is handled in level_outer_ng, skip
-! longitude wrap is handled in level_outer_ng, no need to wrap here
     do i_ng = 2,n_ng
       cur_outer_left = glon_ng(i_ng-1,flds(i_ng-1)%lond0)
       cur_outer_right = glon_ng(i_ng-1,flds(i_ng-1)%lond1)
@@ -134,21 +134,20 @@ module levels_inner_ng_module
     use input_module,only: nstep_ng
     use fields_ng_module,only: flds,nf3din,nf2din,maxlon,maxlat,domain
     use interp_module,only: interp3d,interp2d
-    use mpi_module,only: ntask
-    use mpi_f08,only: mpi_request,mpi_isend,mpi_irecv,mpi_waitall, &
-      mpi_real8,mpi_comm_world,mpi_statuses_ignore
+    use mpi_module,only: ntask,TIEGCM_WORLD
+    use mpi
 
     integer,intent(in) :: i_ng
 
-    integer :: lon0,lon1,lat0,lat1,cnt3d,cnt2d,itask,ifld
+    integer :: lon0,lon1,lat0,lat1,cnt3d,cnt2d,itask,ifld,ierror
     real,dimension(nlevp1_ng(i_ng-1),maxlon(i_ng-1),maxlat(i_ng-1),nf3din) :: sendbuf3d
     real,dimension(nlevp1_ng(i_ng-1),maxlon(i_ng-1),maxlat(i_ng-1),nf3din,0:ntask-1) :: recvbuf3d
     real,dimension(nlevp1_ng(i_ng-1),-1:nlon_ng(i_ng-1)+2,-1:nlat_ng(i_ng-1)+2,nf3din) :: full3d
     real,dimension(maxlon(i_ng-1),maxlat(i_ng-1),nf2din) :: sendbuf2d
     real,dimension(maxlon(i_ng-1),maxlat(i_ng-1),nf2din,0:ntask-1) :: recvbuf2d
     real,dimension(-1:nlon_ng(i_ng-1)+2,-1:nlat_ng(i_ng-1)+2,nf2din) :: full2d
-    type(mpi_request),dimension(0:ntask*4-1) :: request
-    external :: bndry_index_ng
+    integer,dimension(0:ntask*4-1) :: request
+    external :: bndry_index_ng,shutdown
 
     call bndry_index_ng((/flds(i_ng-1)%lon0,flds(i_ng-1)%lon1,flds(i_ng-1)%lat0,flds(i_ng-1)%lat1/), &
       nlon_ng(i_ng-1),nlat_ng(i_ng-1),lon0,lon1,lat0,lat1)
@@ -171,19 +170,26 @@ module levels_inner_ng_module
 
     do itask = 0,ntask-1
       call mpi_isend(sendbuf3d,cnt3d,mpi_real8,send_outer(i_ng,itask), &
-        1,mpi_comm_world,request(itask))
+        1,TIEGCM_WORLD,request(itask),ierror)
+      if (ierror /= mpi_success) call shutdown('failed to send 3d fields to outer level')
+
       call mpi_isend(sendbuf2d,cnt2d,mpi_real8,send_outer(i_ng,itask), &
-        2,mpi_comm_world,request(itask+ntask))
+        2,TIEGCM_WORLD,request(itask+ntask),ierror)
+      if (ierror /= mpi_success) call shutdown('failed to send 2d fields to outer level')
     enddo
 
     do itask = 0,ntask-1
       call mpi_irecv(recvbuf3d(:,:,:,:,itask),cnt3d,mpi_real8,recv_outer(i_ng,itask), &
-        1,mpi_comm_world,request(itask+ntask*2))
+        1,TIEGCM_WORLD,request(itask+ntask*2),ierror)
+      if (ierror /= mpi_success) call shutdown('failed to receive 3d fields from outer level')
+
       call mpi_irecv(recvbuf2d(:,:,:,itask),cnt2d,mpi_real8,recv_outer(i_ng,itask), &
-        2,mpi_comm_world,request(itask+ntask*3))
+        2,TIEGCM_WORLD,request(itask+ntask*3),ierror)
+      if (ierror /= mpi_success) call shutdown('failed to receive 2d fields from outer level')
     enddo
 
-    call mpi_waitall(ntask*4,request,mpi_statuses_ignore)
+    call mpi_waitall(ntask*4,request,mpi_statuses_ignore,ierror)
+    if (ierror /= mpi_success) call shutdown('failed to wait for all mpi tasks to complete')
 
     do itask = 0,ntask-1
       call bndry_index_ng(domain(i_ng-1,:,itask),nlon_ng(i_ng-1),nlat_ng(i_ng-1),lon0,lon1,lat0,lat1)
@@ -214,18 +220,17 @@ module levels_inner_ng_module
     use fields_ng_module,only: flds,maxlon,maxlat,domain,itc,nmap,fmap,zlog
     use interp_module,only: interp3d
     use char_module,only: ismember
-    use mpi_module,only: ntask
-    use mpi_f08,only: mpi_request,mpi_isend,mpi_irecv,mpi_waitall, &
-      mpi_real8,mpi_comm_world,mpi_statuses_ignore
+    use mpi_module,only: ntask,TIEGCM_WORLD
+    use mpi
 
     integer,intent(in) :: i_ng
 
-    integer :: lon0,lon1,lat0,lat1,n,ifld,cnt,itask,lonbeg,lonend,latbeg,latend
+    integer :: lon0,lon1,lat0,lat1,n,ifld,cnt,itask,lonbeg,lonend,latbeg,latend,ierror
     real,dimension(nlevp1_ng(i_ng),maxlon(i_ng),maxlat(i_ng),nmap) :: sendbuf
     real,dimension(nlevp1_ng(i_ng),maxlon(i_ng),maxlat(i_ng),nmap,0:ntask-1) :: recvbuf
     real,dimension(nlevp1_ng(i_ng),-1:nlon_ng(i_ng)+2,-1:nlat_ng(i_ng)+2,nmap) :: full
-    type(mpi_request),dimension(0:ntask*2-1) :: request
-    external :: bndry_index_ng
+    integer,dimension(0:ntask*2-1) :: request
+    external :: bndry_index_ng,shutdown
 
     call bndry_index_ng((/flds(i_ng)%lon0,flds(i_ng)%lon1,flds(i_ng)%lat0,flds(i_ng)%lat1/), &
       nlon_ng(i_ng),nlat_ng(i_ng),lon0,lon1,lat0,lat1)
@@ -243,15 +248,18 @@ module levels_inner_ng_module
 
     do itask = 0,ntask-1
       call mpi_isend(sendbuf,cnt,mpi_real8,send_inner(i_ng,itask), &
-        0,mpi_comm_world,request(itask))
+        0,TIEGCM_WORLD,request(itask),ierror)
+      if (ierror /= mpi_success) call shutdown('failed to send 3d fields to inner level')
     enddo
 
     do itask = 0,ntask-1
       call mpi_irecv(recvbuf(:,:,:,:,itask),cnt,mpi_real8,recv_inner(i_ng,itask), &
-        0,mpi_comm_world,request(itask+ntask))
+        0,TIEGCM_WORLD,request(itask+ntask),ierror)
+      if (ierror /= mpi_success) call shutdown('failed to receive 3d fields from inner level')
     enddo
 
-    call mpi_waitall(ntask*2,request,mpi_statuses_ignore)
+    call mpi_waitall(ntask*2,request,mpi_statuses_ignore,ierror)
+    if (ierror /= mpi_success) call shutdown('failed to wait for all mpi tasks to complete')
 
     do lonbeg = flds(i_ng-1)%lond0,flds(i_ng-1)%lond1
       if (glon_ng(i_ng-1,lonbeg) > glon_ng(i_ng,-1)) exit
@@ -296,21 +304,20 @@ module levels_inner_ng_module
     use fields_ng_module,only: flds,maxlon,maxlat,domain,itc,nbnd,bndry,zlog
     use char_module,only: ismember
     use interp_module,only: interp3d
-    use mpi_module,only: ntask
-    use mpi_f08,only: mpi_request,mpi_isend,mpi_irecv,mpi_waitall, &
-      mpi_real8,mpi_comm_world,mpi_statuses_ignore
+    use mpi_module,only: ntask,TIEGCM_WORLD
+    use mpi
 
     integer,intent(in) :: i_ng
 
-    integer :: lon0,lon1,lat0,lat1,n,if4d,cnt,itask,i,lat,ibnd
+    integer :: lon0,lon1,lat0,lat1,n,if4d,cnt,itask,i,lat,ibnd,ierror
     real,dimension(1) :: bnd
     real,dimension(nlevp1_ng(i_ng-1),maxlon(i_ng-1),maxlat(i_ng-1),nbnd) :: sendbuf
     real,dimension(nlevp1_ng(i_ng-1),maxlon(i_ng-1),maxlat(i_ng-1),nbnd,0:ntask-1) :: recvbuf
     real,dimension(nlevp1_ng(i_ng-1),-1:nlon_ng(i_ng-1)+2,-1:nlat_ng(i_ng-1)+2,nbnd) :: full
     real,dimension(nlevp1_ng(i_ng),1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: bndx
     real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,1) :: bndy
-    type(mpi_request),dimension(0:ntask*2-1) :: request
-    external :: bndry_index_ng
+    integer,dimension(0:ntask*2-1) :: request
+    external :: bndry_index_ng,shutdown
 
     call bndry_index_ng((/flds(i_ng-1)%lon0,flds(i_ng-1)%lon1,flds(i_ng-1)%lat0,flds(i_ng-1)%lat1/), &
       nlon_ng(i_ng-1),nlat_ng(i_ng-1),lon0,lon1,lat0,lat1)
@@ -329,15 +336,18 @@ module levels_inner_ng_module
     do i = 1,2
       do itask = 0,ntask-1
         call mpi_isend(sendbuf,cnt,mpi_real8,send_bndry(i_ng,i,itask), &
-          0,mpi_comm_world,request(itask))
+          0,TIEGCM_WORLD,request(itask),ierror)
+        if (ierror /= mpi_success) call shutdown('failed to send longitudinal boundaries')
       enddo
 
       do itask = 0,ntask-1
         call mpi_irecv(recvbuf(:,:,:,:,itask),cnt,mpi_real8,recv_bndry(i_ng,i,itask), &
-          0,mpi_comm_world,request(itask+ntask))
+          0,TIEGCM_WORLD,request(itask+ntask),ierror)
+        if (ierror /= mpi_success) call shutdown('failed to receive longitudinal boundaries')
       enddo
 
-      call mpi_waitall(ntask*2,request,mpi_statuses_ignore)
+      call mpi_waitall(ntask*2,request,mpi_statuses_ignore,ierror)
+      if (ierror /= mpi_success) call shutdown('failed to wait for all mpi tasks to complete')
 
       if (flds(i_ng)%is_bndry(i)) then
         do itask = 0,ntask-1
@@ -363,15 +373,18 @@ module levels_inner_ng_module
     do lat = 3,4
       do itask = 0,ntask-1
         call mpi_isend(sendbuf,cnt,mpi_real8,send_bndry(i_ng,lat,itask), &
-          0,mpi_comm_world,request(itask))
+          0,TIEGCM_WORLD,request(itask),ierror)
+        if (ierror /= mpi_success) call shutdown('failed to send latitudinal boundaries')
       enddo
 
       do itask = 0,ntask-1
         call mpi_irecv(recvbuf(:,:,:,:,itask),cnt,mpi_real8,recv_bndry(i_ng,lat,itask), &
-          0,mpi_comm_world,request(itask+ntask))
+          0,TIEGCM_WORLD,request(itask+ntask),ierror)
+        if (ierror /= mpi_success) call shutdown('failed to receive latitudinal boundaries')
       enddo
 
-      call mpi_waitall(ntask*2,request,mpi_statuses_ignore)
+      call mpi_waitall(ntask*2,request,mpi_statuses_ignore,ierror)
+      if (ierror /= mpi_success) call shutdown('failed to wait for all mpi tasks to complete')
 
       if (flds(i_ng)%is_bndry(lat)) then
         do itask = 0,ntask-1

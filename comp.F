@@ -9,12 +9,12 @@
 !
 ! Advance major species O2 and O.
 !
-      use params_module,only: dz,nlonp4,nlat,dlat,nlon,glat
+      use params_module,only: dz,nlonp4,dlat,nlon,glat
       use init_module,only: iday
       use cons_module,only: pi,hor,dtr,rmassinv_o2,rmassinv_o1,
      |  rmassinv_he,rmassinv_n2,rmass_o2,rmass_o1,rmass_he,expz,expzmid,
      |  expzmid_inv,difk,dtx2inv,dtsmooth,dtsmooth_div2,difhor,
-     |  gask,grav,re,p0,sqrtpi
+     |  gask,grav,re,p0
       use chemrates_module,only: fs ! from sub comp_o2o
       use lbc,only: b,fb,flx_he
       use fields_module,only: tlbc
@@ -36,7 +36,7 @@
      |  un,   ! zonal wind velocity at current timestep
      |  vn,   ! meridional wind velocity at current timestep
      |  w,    ! vertical velocity at current timestep
-     |  mbar,
+     |  mbar, ! mean molecular weight
      |  hdo2, ! O2 horizontal diffusion (hdif3)
      |  hdo1, ! O  horizontal diffusion (hdif3)
      |  hdhe  ! He horizontal diffusion (hdif3)
@@ -55,14 +55,12 @@
       integer,parameter :: io2=1,io1=2,ihe=3 ! indices to O2, O, He respectively
       real,dimension(lon0:lon1,lev0:lev1,3,3) :: gama
       real,dimension(lon0:lon1,lev0:lev1,3)   :: zz
-      real,dimension(1,lon0-2:lon1+2,lat0-2:lat1+2) :: flx_he_filt
-      real,dimension(lon0:lon1,lat0:lat1)     :: flx_arg,
-     |                                           flx_he_lat,flx_he_lon
+      real,dimension(lon0:lon1,lat0:lat1)     :: flx_arg
       real,dimension(lon0:lon1,lev0:lev1)     :: embar
       real,dimension(lon0:lon1,3,3,2)         :: ak
-      real,dimension(lon0:lon1,3,3)           :: ep,pk,qk,rk,wkm1,wkm2
-      real,dimension(lon0:lon1,3)             :: fk,wkv1,wkv2,ps0
-      real,dimension(lon0:lon1)               :: wks1,wks2,wks3,wks4,
+      real,dimension(lon0:lon1,3,3)           :: ep,pk,qk,rk,wkm1
+      real,dimension(lon0:lon1,3)             :: fk,wkv1,ps0
+      real,dimension(lon0:lon1)               :: wks1,wks3,wks4,
      |                                           embar0,dfactor,detalpha
       real,dimension(lon0:lon1)               :: alpha23,alpha22,
      |                                           alpha33,alpha32,flx00
@@ -914,14 +912,12 @@
 !    |    'lev',k0,k1,'lon',i0,i1,lat)
 
       enddo ! lat=lat0,lat1
-#ifdef MPI
 !
 ! Periodic points:
 !     call mp_periodic_f3d(o2_upd(:,lon0:lon1,lat0-1:lat1+1),
 !    |  lev0,lev1,lon0,lon1,lat0-1,lat1+1)
 !     call mp_periodic_f3d(o1_upd(:,lon0:lon1,lat0-1:lat1+1),
 !    |  lev0,lev1,lon0,lon1,lat0-1,lat1+1)
-#endif
 !
 ! Insure non-negative O2,O:
       do lat=lat0,lat1
@@ -979,8 +975,7 @@
 ! Provide diagnostics N2 and O/N2:
 !
         call mkdiag_O_N2('O_N2',o1_upd(:,lon0:lon1,lat),
-     |    o2_upd(:,lon0:lon1,lat),n2(:,lon0:lon1,lat),
-     |    lev0,lev1,lon0,lon1,lat)
+     |    n2(:,lon0:lon1,lat),lev0,lev1,lon0,lon1,lat)
 
         call mkdiag_N2('N2',n2(:,lon0:lon1,lat),lev0,lev1,lon0,lon1,lat)
 
@@ -1063,14 +1058,9 @@
 !
 ! Filter updated W omega:
 !
-      use params_module,only: nlat,nlonp4,nlon
-#ifdef MPI
+      use params_module,only: nlonp4
       use mpi_module,only: mp_gatherlons_f3d,mp_scatterlons_f3d,mytidi
       implicit none
-#else
-      implicit none
-      integer :: mytidi=0
-#endif
 !
 ! Args:
       integer,intent(in) :: lev0,lev1,lon0,lon1,lat0,lat1
@@ -1083,9 +1073,8 @@
 #endif
 !
 ! Local:
-      integer :: i,j,nlevs,nlons,nlats
+      integer :: i,j,nlevs,nlons,nlats,ier
       real :: fik(nlonp4,lev0:lev1),fkij(lev0:lev1,nlonp4,lat0:lat1)
-      real :: fmin,fmax
 !
 #ifdef VT
 !     code = 131 ; state = 'filter_o2o' ; activity='Filtering'
@@ -1104,14 +1093,11 @@
         enddo
       enddo ! j=lat0,lat1
 !
-#ifdef MPI
-!
 ! Gather longitudes into tasks in first longitude column of task table
 !   (leftmost of each j-row) for global fft. (i.e., tasks with mytidi==0 
 !   gather lons from other tasks in that row). This includes all latitudes.
 !
       call mp_gatherlons_f3d(fkij,lev0,lev1,lon0,lon1,lat0,lat1,1,'O2O')
-#endif
 !
 ! Only leftmost tasks at each j-row of tasks does the global filtering:
       if (mytidi==0) then
@@ -1122,7 +1108,7 @@
             fik(i,:) = fkij(:,i,j)
           enddo ! i=1,nlonp4
 !
-          call ringfilter(fik,lev0,lev1,1,'PLM',j)
+          call ringfilter(fik,lev0,lev1,1,'O2O',j)
 !
 ! Return filtered array to fkij:
           do i=1,nlonp4
@@ -1130,14 +1116,12 @@
           enddo ! i=1,nlonp4
         enddo latscan ! j=lat0,lat1
       endif ! mytidi==0
-#ifdef MPI
 !
 ! Now leftmost task at each j-row must redistribute filtered data
 ! back to other tasks in the j-row (mytidi>0,mytidj) (includes latitude):
 !
       call mp_scatterlons_f3d(fkij,lev0,lev1,lon0,lon1,lat0,lat1,1,
      |  'O2O')
-#endif
 !
 ! Return filtered array to fout at current task longitudes and latitudes:
       do j=lat0,lat1

@@ -12,11 +12,11 @@ subroutine init_fields_ng
   use fields_ng_module,only: nf3din,nf2din,flds,itp_ng=>itp,itc_ng=>itc,ubfill,zlog,bndry
   use interp_module,only: interp3d,interp2d
   use char_module,only: ismember
-  use mpi_module,only: mxlon,mxlat,ntask,tasks,lon0,lon1,lat0,lat1
-  use mpi_f08,only: mpi_allgather,mpi_real8,mpi_comm_world
+  use mpi_module,only: mxlon,mxlat,ntask,tasks,lon0,lon1,lat0,lat1,TIEGCM_WORLD
+  use mpi
   implicit none
 
-  integer :: nx,ny,ifld,cnt4d,cnt3d,cnt2d,itask,i0,i1,j0,j1,sidx,i_ng,i,lat,n
+  integer :: nx,ny,ifld,cnt4d,cnt3d,cnt2d,itask,i0,i1,j0,j1,sidx,i_ng,i,lat,n,ierror
   real :: mid_lon
   integer,dimension(1) :: idx
   real,dimension(1) :: bnd
@@ -32,6 +32,7 @@ subroutine init_fields_ng
   real,dimension(nlonp4,nlat,nf2din) :: full2d,tmp2d
   real,dimension(maxval(nlevp1_ng),1,minval(flds%latd0):maxval(flds%latd1)) :: bndx
   real,dimension(maxval(nlevp1_ng),minval(flds%lond0):maxval(flds%lond1),1) :: bndy
+  external :: shutdown
 
 ! initialize sendbuf and recvbuf to 0 for 4d/3d/2d fields
   nx = lon1-lon0+1
@@ -69,9 +70,14 @@ subroutine init_fields_ng
   cnt2d = mxlon*mxlat*5
 
 ! collective communication is used only in initialization
-  call mpi_allgather(sendbuf4d,cnt4d,mpi_real8,recvbuf4d,cnt4d,mpi_real8,mpi_comm_world)
-  call mpi_allgather(sendbuf3d,cnt3d,mpi_real8,recvbuf3d,cnt3d,mpi_real8,mpi_comm_world)
-  call mpi_allgather(sendbuf2d,cnt2d,mpi_real8,recvbuf2d,cnt2d,mpi_real8,mpi_comm_world)
+  call mpi_allgather(sendbuf4d,cnt4d,mpi_real8,recvbuf4d,cnt4d,mpi_real8,TIEGCM_WORLD,ierror)
+  if (ierror /= mpi_success) call shutdown('failed to gather 4d fields to each process')
+
+  call mpi_allgather(sendbuf3d,cnt3d,mpi_real8,recvbuf3d,cnt3d,mpi_real8,TIEGCM_WORLD,ierror)
+  if (ierror /= mpi_success) call shutdown('failed to gather 3d fields to each process')
+
+  call mpi_allgather(sendbuf2d,cnt2d,mpi_real8,recvbuf2d,cnt2d,mpi_real8,TIEGCM_WORLD,ierror)
+  if (ierror /= mpi_success) call shutdown('failed to gather 2d fields to each process')
 
 ! reconstruct global fields from received global subdomains
   do itask = 0,ntask-1
