@@ -84,7 +84,7 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,ui,vi,i_ng)
       tn,o2,o1,n2,barm,xnmbar,scht,xalfa1,xalfa2,xcusp,xdrizl,xalfa_sp,xalfa3, &
       flux1_ion,flux2_ion,cusp_ion,drizl_ion,alfa1_ion,alfa2_ion,alfa3_ion,alfasp_bion, &
       barm_t,qsum,denom,p0ez_mbar,tk_mbar,qo2p_aur,qop_aur,qn2p_aur,qaurora, &
-      falfa3_alfa3_ion,falfa_sp_alfasp_bion,qo2p_aur_a,qop_aur_a,qn2p_aur_a
+      falfa3_alfa3_ion,falfa_sp_alfasp_bion,qo2p_a,qop_a,qn2p_a
     logical,external :: isclose
 
     tn = flds(i_ng)%tn(:,:,latbeg:latend,itp(i_ng))
@@ -256,24 +256,24 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,ui,vi,i_ng)
     qn2p_aur = qsum*0.7*n2/(rmass_n2*denom)+qia(1)
 
     do k = 2,nk-1
-      qo2p_aur_a(k,:,:) = sqrt(qo2p_aur(k,:,:)*qo2p_aur(k-1,:,:))
-      qop_aur_a(k,:,:) = sqrt(qop_aur(k,:,:)*qop_aur(k-1,:,:))
-      qn2p_aur_a(k,:,:) = sqrt(qn2p_aur(k,:,:)*qn2p_aur(k-1,:,:))
+      qo2p_a(k,:,:) = sqrt(qo2p_aur(k,:,:)*qo2p_aur(k-1,:,:))
+      qop_a(k,:,:) = sqrt(qop_aur(k,:,:)*qop_aur(k-1,:,:))
+      qn2p_a(k,:,:) = sqrt(qn2p_aur(k,:,:)*qn2p_aur(k-1,:,:))
     enddo
 
-    qo2p_aur_a(1,:,:) = 1.5*qo2p_aur(1,:,:)-0.5*qo2p_aur(2,:,:)
-    qop_aur_a(1,:,:) = 1.5*qop_aur(1,:,:)-0.5*qop_aur(2,:,:)
-    qn2p_aur_a(1,:,:) = 1.5*qn2p_aur(1,:,:)-0.5*qn2p_aur(2,:,:)
+    qo2p_a(1,:,:) = max(1.5*qo2p_aur(1,:,:)-0.5*qo2p_aur(2,:,:),0.)
+    qop_a(1,:,:) = max(1.5*qop_aur(1,:,:)-0.5*qop_aur(2,:,:),0.)
+    qn2p_a(1,:,:) = max(1.5*qn2p_aur(1,:,:)-0.5*qn2p_aur(2,:,:),0.)
 
-    qo2p_aur_a(nk,:,:) = 1.5*qo2p_aur(nk-1,:,:)-0.5*qo2p_aur(nk-2,:,:)
-    qop_aur_a(nk,:,:) = 1.5*qop_aur(nk-1,:,:)-0.5*qop_aur(nk-2,:,:)
-    qn2p_aur_a(nk,:,:) = 1.5*qn2p_aur(nk-1,:,:)-0.5*qn2p_aur(nk-2,:,:)
+    qo2p_a(nk,:,:) = max(1.5*qo2p_aur(nk-1,:,:)-0.5*qo2p_aur(nk-2,:,:),0.)
+    qop_a(nk,:,:) = max(1.5*qop_aur(nk-1,:,:)-0.5*qop_aur(nk-2,:,:),0.)
+    qn2p_a(nk,:,:) = max(1.5*qn2p_aur(nk-1,:,:)-0.5*qn2p_aur(nk-2,:,:),0.)
 
-    qo2p(:,:,latbeg:latend) = qo2p(:,:,latbeg:latend)+qo2p_aur_a
-    qop(:,:,latbeg:latend) = qop(:,:,latbeg:latend)+qop_aur_a
-    qn2p(:,:,latbeg:latend) = qn2p(:,:,latbeg:latend)+qn2p_aur_a
-    qnp(:,:,latbeg:latend) = qnp(:,:,latbeg:latend)+.22/.7*qn2p_aur_a
-    qtef(:,:,latbeg:latend) = qtef(:,:,latbeg:latend)+1.57*qn2p_aur_a
+    qo2p(:,:,latbeg:latend) = qo2p(:,:,latbeg:latend)+qo2p_a
+    qop(:,:,latbeg:latend) = qop(:,:,latbeg:latend)+qop_a
+    qn2p(:,:,latbeg:latend) = qn2p(:,:,latbeg:latend)+qn2p_a
+    qnp(:,:,latbeg:latend) = qnp(:,:,latbeg:latend)+.22/.7*qn2p_a
+    qtef(:,:,latbeg:latend) = qtef(:,:,latbeg:latend)+1.57*qn2p_a
 
   end subroutine aurora
 !-----------------------------------------------------------------------

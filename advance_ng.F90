@@ -127,14 +127,14 @@ recursive subroutine advance_ng(i_ng)
     flds(i_ng)%z(:,:,:,itc(i_ng)) = flds(i_ng)%z(:,:,:,itp(i_ng))
 
     call hdif12_ng( &
+      flds(i_ng)%fnrh, &
+      flds(i_ng)%fkmh, &
       flds(i_ng)%kldt, &
       flds(i_ng)%kldu, &
       flds(i_ng)%kldv, &
       flds(i_ng)%kldo2, &
       flds(i_ng)%kldo1, &
       flds(i_ng)%kldhe, &
-      flds(i_ng)%fnrh, &
-      flds(i_ng)%fkmh, &
       i_ng)
 
     call dynamics_ng(istep,i_ng)

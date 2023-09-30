@@ -564,13 +564,15 @@
 ! Horizontal diffusion, first step:
 ! hdif1 saves nrh and kmh at lats -2->nlat in nrh and kmh using
 !   fields un_nm and vn_nm at j+1 and j+2, and tn_nm and mbar at j+1.
-! hdif1 calls mp_bnd[lats,lons]_kmh
+! hdif1 calls mp_bnd[lats,lons]_f3d
 !
       call hdif1(
      |  tn_nm(levd0,lond0,latd0,itp),
      |  un_nm(levd0,lond0,latd0,itp),
      |  vn_nm(levd0,lond0,latd0,itp),
      |  mbar (levd0,lond0,latd0,itp),
+     |  fnrh (levd0,lond0,latd0),
+     |  fkmh (levd0,lond0,latd0),
      |  1,nlevp1,lon0,lon1,lat0,lat1)
       if (debug) write(6,"('advance after hdif1')")
 !
@@ -588,12 +590,14 @@
      |  o2_nm(levd0,lond0,latd0,itp),  ! 4d input
      |  o1_nm(levd0,lond0,latd0,itp),  ! 4d input
      |  he_nm(levd0,lond0,latd0,itp),  ! 4d input
-     |  kldt ,      ! 3d output
-     |  kldu ,      ! 3d output
-     |  kldv ,      ! 3d output
-     |  kldo2,      ! 3d output
-     |  kldo1,      ! 3d output
-     |  kldhe,      ! 3d output
+     |  fnrh (levd0,lond0,latd0),      ! 3d input
+     |  fkmh (levd0,lond0,latd0),      ! 3d input
+     |  kldt (levd0,lond0,latd0),      ! 3d output
+     |  kldu (levd0,lond0,latd0),      ! 3d output
+     |  kldv (levd0,lond0,latd0),      ! 3d output
+     |  kldo2(levd0,lond0,latd0),      ! 3d output
+     |  kldo1(levd0,lond0,latd0),      ! 3d output
+     |  kldhe(levd0,lond0,latd0),      ! 3d output
      |  1,nlevp1,lon0,lon1,lat0,lat1)
       if (debug) write(6,"('advance after hdif2')")
 !

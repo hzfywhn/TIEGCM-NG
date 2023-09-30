@@ -1,6 +1,6 @@
 subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
 
-  use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,zpmid_ng,glat_ng
+  use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,zpmid_ng,glat_ng,zpint_ng
   use cons_module,only: rmass_op,gask,grav,re,rmassinv_o2,rmassinv_o1, &
     rmassinv_n2,rmassinv_n2d,dtsmooth,dtsmooth_div2,pi,rtd,rmassinv_he
   use chemrates_module,only: rk10,rk16,rk17,rk18,rk21,rk22,rk23,rk24,rk26,rk27
@@ -127,7 +127,11 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
     18.6*n2*rmassinv_n2+18.1*o2*rmassinv_o2+3.6*he*rmassinv_he
   dj = 1.42E17/(xnmbar*vni)
   vni = 16*3.53E-11*vni
-  if (.not. isclose(opdiffcap,0.)) dj = min(dj,opdiffcap)
+  if (.not. isclose(opdiffcap,0.)) then
+    do k = 1,nk
+      dj(k,:,:) = min(dj(k,:,:),opdiffcap/(1+2**(zpint_ng(i_ng,k)-6)))
+    enddo
+  endif
 
   tp = te+ti
 

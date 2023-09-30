@@ -1,5 +1,5 @@
 !
-      subroutine comp(tn,o2,o2_nm,o1,o1_nm,he,he_nm,n2,un,vn,w,mbar,
+      subroutine comp(tn,o2,o2_nm,o1,o1_nm,he,he_nm,w,mbar,
      |                hdo2,hdo1,hdhe,o2_upd,o2nm_upd,o1_upd,o1nm_upd,
      |                he_upd,henm_upd,lev0,lev1,lon0,lon1,lat0,lat1)
 !
@@ -19,7 +19,6 @@
       use lbc,only: b,fb,flx_he
       use fields_module,only: tlbc
       use addfld_module,only: addfld
-      use diags_module,only: mkdiag_O_N2,mkdiag_N2
       use input_module,only: calc_helium
       implicit none
 !
@@ -33,17 +32,12 @@
      |  o2_nm,! O2 (mmr) at time n-1
      |  o1_nm,! O  (mmr) at time n-1
      |  he_nm,! He (mmr) at time n-1
-     |  un,   ! zonal wind velocity at current timestep
-     |  vn,   ! meridional wind velocity at current timestep
      |  w,    ! vertical velocity at current timestep
      |  mbar, ! mean molecular weight
      |  hdo2, ! O2 horizontal diffusion (hdif3)
      |  hdo1, ! O  horizontal diffusion (hdif3)
      |  hdhe  ! He horizontal diffusion (hdif3)
 !
-! N2 (mmr) is input, but is also updated from new o2,o,he.
-      real,dimension(lev0:lev1,lon0-2:lon1+2,lat0-2:lat1+2),
-     |  intent(inout) :: n2 
       real,dimension(lev0:lev1,lon0-2:lon1+2,lat0-2:lat1+2),
      |  intent(out)::
      |  o2_upd,  o1_upd,  he_upd,  ! output: O2,O,He updated for next timestep
@@ -65,8 +59,8 @@
       real,dimension(lon0:lon1)               :: alpha23,alpha22,
      |                                           alpha33,alpha32,flx00
       real :: rlat
-      real :: alpha(3,3),phi(3,4),delta(3,3),tau,t00,small,small_he
-      real :: normalize,thdiffalpha
+      real :: alpha(3,3),phi(3,4),delta(3,3),tau,t00,small
+      real :: n2,n2nm,normalize,thdiffalpha
       real :: flxwks
       real,dimension(lev0:lev1,lon0:lon1,lat0:lat1) ::
      |  o2nm_smooth, o1nm_smooth, henm_smooth, ! smoothed at time n-1
@@ -94,7 +88,6 @@
       delta(:,3)=(/0.,0.,1./)
       t00=273.
       small = 1.e-6
-      small_he = 1.e-9 ! he is small at lower boundary
       i0=lon0 ; i1=lon1 ; k0=lev0 ; k1=lev1
 !
       nk = lev1-lev0+1
@@ -129,15 +122,13 @@
      |    lat0,lat1,0)
 
       else
-        he_upd = 0.   ! 3d whole array op
-        henm_upd = 0. ! 3d whole array op
         flx_he=0.     ! 2d whole array op
       endif
 !
 ! Calculate and save horizontal advection in o2_advec, o1_advec, he_advec:
 !
       do lat=lat0,lat1
-        call advecl(o2,o1,he,un,vn,o2_advec,o1_advec,he_advec,
+        call advecl(o2,o1,he,o2_advec,o1_advec,he_advec,
      |    lev0,lev1,lon0,lon1,lat0,lat1,lat)
       enddo ! lat=lat0,lat1
 !
@@ -840,7 +831,7 @@
       do k=lev0,lev1
         o2_upd(k,lon0:lon1,lat) = upd(k,:,io2)
         o1_upd(k,lon0:lon1,lat) = upd(k,:,io1)
-        if (calc_helium==1) he_upd(k,lon0:lon1,lat) = upd(k,:,ihe)
+        he_upd(k,lon0:lon1,lat) = upd(k,:,ihe)
       enddo ! k=lev0,lev1
 !
 ! Upper boundary:
@@ -854,15 +845,11 @@
      |    (1.-.5*ep(i,io1,kp)*dz)*o1_upd(lev1-1,i,lat)+
      |    (alpha23(i)-alpha22(i))*flx_he(i,lat)/
      |    (flx00(i)*(1./dz-0.5*ep(i,io1,kp)))
-!
-! Calculate updated helium only if namelist calc_helium == 1:
-        if (calc_helium == 1) then
-          he_upd(lev1,i,lat) = 
-     |      (1.+.5*ep(i,ihe,kp)*dz)/
-     |      (1.-.5*ep(i,ihe,kp)*dz)*he_upd(lev1-1,i,lat)+
-     |      (alpha33(i)-alpha32(i))*flx_he(i,lat)/
-     |      (flx00(i)*(1./dz-0.5*ep(i,ihe,kp)))
-        endif
+        he_upd(lev1,i,lat) = 
+     |    (1.+.5*ep(i,ihe,kp)*dz)/
+     |    (1.-.5*ep(i,ihe,kp)*dz)*he_upd(lev1-1,i,lat)+
+     |    (alpha33(i)-alpha32(i))*flx_he(i,lat)/
+     |    (flx00(i)*(1./dz-0.5*ep(i,ihe,kp)))
       enddo ! i=lon0,lon1
 !
 !       call addfld('O2_SOLV',' ',' ',o2_upd(:,lon0:lon1,lat),
@@ -875,13 +862,17 @@
 ! End latitude scan:
       enddo ! lat=lat0,lat1
 !
+      if (calc_helium == 0) then
+        he_upd = small   ! 3d whole array op
+        henm_upd = small ! 3d whole array op
+      endif
+!
 ! Filter the new composition species:
 !
 ! Fourier smoothing of O2 and O:
       call filter_o2o(o2_upd,lev0,lev1,lon0,lon1,lat0,lat1)
       call filter_o2o(o1_upd,lev0,lev1,lon0,lon1,lat0,lat1)
-      if (calc_helium == 1)
-     |  call filter_o2o(he_upd,lev0,lev1,lon0,lon1,lat0,lat1)
+      call filter_o2o(he_upd,lev0,lev1,lon0,lon1,lat0,lat1)
 !
 ! Resume latitude scan:
       do lat=lat0,lat1
@@ -897,12 +888,8 @@
      |        o2_upd(k,i,lat)) + dtsmooth*o2(k,i,lat)
             o1nm_upd(k,i,lat) = dtsmooth_div2*(o1_nm(k,i,lat)+
      |        o1_upd(k,i,lat)) + dtsmooth*o1(k,i,lat)
-!
-! Zero out helium at time t-1 if requested:
-            if (calc_helium==1) then
-              henm_upd(k,i,lat) = dtsmooth_div2*(he_nm(k,i,lat)+
-     |          he_upd(k,i,lat)) + dtsmooth*he(k,i,lat)
-            endif
+            henm_upd(k,i,lat) = dtsmooth_div2*(he_nm(k,i,lat)+
+     |        he_upd(k,i,lat)) + dtsmooth*he(k,i,lat)
           enddo ! k=lev0,lev1-1
         enddo ! i=lon0,lon1 
 
@@ -923,61 +910,40 @@
       do lat=lat0,lat1
         do i=lon0,lon1
           do k=lev0,lev1
+            n2 = 1.-o2_upd(k,i,lat)-o1_upd(k,i,lat)-he_upd(k,i,lat)
+            n2nm =
+     |        1.-o2nm_upd(k,i,lat)-o1nm_upd(k,i,lat)-henm_upd(k,i,lat)
+!
             if (o2_upd(k,i,lat) < small) o2_upd(k,i,lat) = small
             if (o1_upd(k,i,lat) < small) o1_upd(k,i,lat) = small
-            if (calc_helium==1) then
-              if (he_upd(k,i,lat) < small_he) he_upd(k,i,lat) = small_he
-            endif
+            if (he_upd(k,i,lat) < small) he_upd(k,i,lat) = small
+            if (n2 < small) n2 = small
+!
             if (o2nm_upd(k,i,lat) < small) o2nm_upd(k,i,lat) = small
             if (o1nm_upd(k,i,lat) < small) o1nm_upd(k,i,lat) = small
-            if (calc_helium==1) then
-              if (henm_upd(k,i,lat) < small_he)
-     |          henm_upd(k,i,lat) = small_he
-            endif
-            if (1.-small-o2_upd(k,i,lat)-o1_upd(k,i,lat)-
-     |          he_upd(k,i,lat) < 0.) then
-              normalize = (o2_upd(k,i,lat)+o1_upd(k,i,lat)+
-     |                    he_upd(k,i,lat))                   
+            if (henm_upd(k,i,lat) < small) henm_upd(k,i,lat) = small
+            if (n2nm < small) n2nm = small
 !
 ! EKS comment: divisor should be the same when normalizing
 ! both o2 and o1 to insure non-negativity
 !
-              o2_upd(k,i,lat) = o2_upd(k,i,lat)*(1.-small)/  
-     |                          normalize
-              o1_upd(k,i,lat) = o1_upd(k,i,lat)*(1.-small)/
-     |                          normalize
-              if (calc_helium==1) then
-                he_upd(k,i,lat) = he_upd(k,i,lat)*(1.-small)/
-     |                          normalize
-              endif
-            endif
-            if (1.-small-o2nm_upd(k,i,lat)-o1nm_upd(k,i,lat)-
-     |          henm_upd(k,i,lat) < 0.) then
-              normalize = (o2nm_upd(k,i,lat)+o1nm_upd(k,i,lat)+ 
-     |                    henm_upd(k,i,lat))
-              o2nm_upd(k,i,lat) = o2nm_upd(k,i,lat)*(1.-small)/
-     |                            normalize
-              o1nm_upd(k,i,lat) = o1nm_upd(k,i,lat)*(1.-small)/
-     |                            normalize
-              if (calc_helium==1) then
-                henm_upd(k,i,lat) = henm_upd(k,i,lat)*(1.-small)/
-     |                            normalize
-              endif
+            normalize =
+     |        o2_upd(k,i,lat)+o1_upd(k,i,lat)+he_upd(k,i,lat)+n2
+            if (normalize > 1.) then
+              o2_upd(k,i,lat) = o2_upd(k,i,lat)/normalize
+              o1_upd(k,i,lat) = o1_upd(k,i,lat)/normalize
+              he_upd(k,i,lat) = he_upd(k,i,lat)/normalize
             endif
 !
-! Update N2. This is necessary only if n2 is to be saved on
-! secondary history (it will be updated in addiag for next timestep). 
-            n2(k,i,lat) = (1.-o2_upd(k,i,lat)-o1_upd(k,i,lat)-
-     |                     he_upd(k,i,lat))
+            normalize =
+     |        o2nm_upd(k,i,lat)+o1nm_upd(k,i,lat)+henm_upd(k,i,lat)+n2nm
+            if (normalize > 1.) then
+              o2nm_upd(k,i,lat) = o2nm_upd(k,i,lat)/normalize
+              o1nm_upd(k,i,lat) = o1nm_upd(k,i,lat)/normalize
+              henm_upd(k,i,lat) = henm_upd(k,i,lat)/normalize
+            endif
           enddo ! k=lev0,lev1
         enddo ! i=lon0,lon1
-!
-! Provide diagnostics N2 and O/N2:
-!
-        call mkdiag_O_N2('O_N2',o1_upd(:,lon0:lon1,lat),
-     |    n2(:,lon0:lon1,lat),lev0,lev1,lon0,lon1,lat)
-
-        call mkdiag_N2('N2',n2(:,lon0:lon1,lat),lev0,lev1,lon0,lon1,lat)
 
 !       call addfld('O2_OUT',' ',' ',o2_upd(:,i0:i1,lat),
 !    |    'lev',k0,k1,'lon',i0,i1,lat)
@@ -991,67 +957,32 @@
       enddo ! lat=lat0,lat1
       end subroutine comp
 !-----------------------------------------------------------------------
-      subroutine advecl(o2,o1,he,un,vn,o2_advec,o1_advec,he_advec,
+      subroutine advecl(o2,o1,he,o2_advec,o1_advec,he_advec,
      |  lev0,lev1,lon0,lon1,lat0,lat1,lat)
 !
-! Horizontal advection for O2,O. 
+! Horizontal advection for O2,O,He. 
 ! In previous versions, this was sub advecl (inline.F), called from 
 !   k-loop in comp.F. Here it is called from beginning of comp.F at 
 !   all latitudes and saved for later use (fk) inside comp.F k-loop.
 ! o2,o1,he,un,vn already have i-2,i-1,i+1,i+2, and j-1,j-2,j+1,j+2 for 
 !   finite differencing.
 !
-      use cons_module,only: dlamda_2div3 ,dlamda_1div12, dphi_2div3,
-     |  dphi_1div12,re_inv,racs
       implicit none
 !
 ! Args:
       integer,intent(in) :: lev0,lev1,lon0,lon1,lat0,lat1,lat
       real,dimension(lev0:lev1,lon0-2:lon1+2,lat0-2:lat1+2),intent(in)::
-     |  o2,o1,he,un,vn
+     |  o2,o1,he
       real,dimension(lev0:lev1,lon0:lon1,lat0:lat1),intent(out) ::
      |  o2_advec, o1_advec, he_advec
 !
-! Local:
-      integer :: k,i
+      call advec(o2(:,:,lat-2:lat+2),o2_advec(:,:,lat),
+     |  lev0,lev1,lon0,lon1,lat)
+      call advec(o1(:,:,lat-2:lat+2),o1_advec(:,:,lat),
+     |  lev0,lev1,lon0,lon1,lat)
+      call advec(he(:,:,lat-2:lat+2),he_advec(:,:,lat),
+     |  lev0,lev1,lon0,lon1,lat)
 !
-      do k=lev0,lev1-1
-        do i=lon0,lon1
-          o2_advec(k,i,lat) = .5*racs(lat)*
-     |      (dlamda_2div3*(o2(k,i+1,lat)-o2(k,i-1,lat))*
-     |      (un(k,i+1,lat)+un(k,i-1,lat))-
-     |      dlamda_1div12*(o2(k,i+2,lat)-o2(k,i-2,lat))*
-     |      (un(k,i+2,lat)+un(k,i-2,lat)))+
-     |      .5*re_inv*
-     |      (dphi_2div3*(o2(k,i,lat+1)-o2(k,i,lat-1))*
-     |      (vn(k,i,lat+1)+vn(k,i,lat-1))-
-     |      dphi_1div12*(o2(k,i,lat+2)-o2(k,i,lat-2))*
-     |      (vn(k,i,lat+2)+vn(k,i,lat-2)))
-
-          o1_advec(k,i,lat) = .5*racs(lat)*
-     |      (dlamda_2div3*(o1(k,i+1,lat)-o1(k,i-1,lat))*
-     |      (un(k,i+1,lat)+un(k,i-1,lat))-
-     |      dlamda_1div12*(o1(k,i+2,lat)-o1(k,i-2,lat))*
-     |      (un(k,i+2,lat)+un(k,i-2,lat)))+
-     |      .5*re_inv*
-     |      (dphi_2div3*(o1(k,i,lat+1)-o1(k,i,lat-1))*
-     |      (vn(k,i,lat+1)+vn(k,i,lat-1))-
-     |      dphi_1div12*(o1(k,i,lat+2)-o1(k,i,lat-2))*
-     |      (vn(k,i,lat+2)+vn(k,i,lat-2)))
-
-          he_advec(k,i,lat) = .5*racs(lat)*
-     |      (dlamda_2div3*(he(k,i+1,lat)-he(k,i-1,lat))*
-     |      (un(k,i+1,lat)+un(k,i-1,lat))-
-     |      dlamda_1div12*(he(k,i+2,lat)-he(k,i-2,lat))*
-     |      (un(k,i+2,lat)+un(k,i-2,lat)))+
-     |      .5*re_inv*
-     |      (dphi_2div3*(he(k,i,lat+1)-he(k,i,lat-1))*
-     |      (vn(k,i,lat+1)+vn(k,i,lat-1))-
-     |      dphi_1div12*(he(k,i,lat+2)-he(k,i,lat-2))*
-     |      (vn(k,i,lat+2)+vn(k,i,lat-2)))
-        enddo ! i=lon0,lon1
-      enddo ! k=lev0,lev1-1
-
       end subroutine advecl
 !-----------------------------------------------------------------------
       subroutine filter_o2o(fout,lev0,lev1,lon0,lon1,lat0,lat1)

@@ -1,4 +1,4 @@
-subroutine hdif12_ng(fkldt,fkldu,fkldv,fkldo2,fkldo1,fkldhe,fnrh,fkmh,i_ng)
+subroutine hdif12_ng(fnrh,fkmh,fkldt,fkldu,fkldv,fkldo2,fkldo1,fkldhe,i_ng)
 ! changed the domains of fnrh,fkmh to lat0:lat1 (previously lat0-1:lat1-1)
 
   use params_module,only: nlevp1_ng,nlon_ng,nlat_ng
@@ -11,7 +11,7 @@ subroutine hdif12_ng(fkldt,fkldu,fkldv,fkldo2,fkldo1,fkldhe,fnrh,fkmh,i_ng)
 
   integer,intent(in) :: i_ng
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(out) :: &
-    fkldt,fkldu,fkldv,fkldo2,fkldo1,fkldhe,fnrh,fkmh
+    fnrh,fkmh,fkldt,fkldu,fkldv,fkldo2,fkldo1,fkldhe
 
   real,parameter :: cp2 = 0.2, con3 = 2.*cp2**2
   integer :: nk,lond0,lond1,latd0,latd1,k,i,lat,lonbeg,latend,ierror

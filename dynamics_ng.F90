@@ -217,7 +217,6 @@ subroutine dynamics_ng(istep,i_ng)
     i_ng)
 
   call comp_ng( &
-    flds(i_ng)%n2, &
     flds(i_ng)%o2(:,:,:,itc(i_ng)), &
     flds(i_ng)%o2_nm(:,:,:,itc(i_ng)), &
     flds(i_ng)%o1(:,:,:,itc(i_ng)), &

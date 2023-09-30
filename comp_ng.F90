@@ -1,4 +1,4 @@
-subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,i_ng)
+subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,i_ng)
 ! changed the 3d layout to lev,lon,lat (previously lon,lev) in accordance with other subroutines
 
   use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,glat_ng
@@ -11,13 +11,12 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
   implicit none
 
   integer,intent(in) :: istep,i_ng
-  real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(inout) :: n2
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(out) :: &
     o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(inout) :: flx_he
 
   integer,parameter :: io2 = 1, io1 = 2, ihe = 3
-  real,parameter :: tau = 1.86e+3, thdiffalpha = -0.38, t00 = 273., small = 1.e-6, small_he = 1.e-9
+  real,parameter :: tau = 1.86e+3, thdiffalpha = -0.38, t00 = 273., small = 1.e-6
   real,dimension(3),parameter :: ss = (/1.710,1.749,1.718/)
   real,dimension(3,3),parameter :: delta = reshape((/1.,0.,0.,0.,1.,0.,0.,0.,1./),(/3,3/))
   real,dimension(3,4),parameter :: phi = reshape((/0.,0.673,0.270,1.35,0.,0.404,2.16,1.616,0.,1.11,0.769,0.322/),(/3,4/))
@@ -31,7 +30,7 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,3) :: pk,qk,rk,wkm1,alpha
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,3,2) :: ak
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    tn,o2,o2_nm,o1,o1_nm,he,he_nm,w,mbar,hdo2,hdo1,hdhe,normalize, &
+    tn,o2,o2_nm,o1,o1_nm,he,he_nm,w,mbar,hdo2,hdo1,hdhe,n2,n2nm,normalize, &
     o2nm_smooth,o1nm_smooth,henm_smooth,o2_advec,o1_advec,he_advec,wi
   real,dimension(0:nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     o2i,o1i,hei,embari,tni,dembardz,dtndz
@@ -62,11 +61,7 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
   is_bndry = flds(i_ng)%is_bndry
 
 ! flx_he is from interpolation
-  if (calc_helium /= 1) then
-    he_upd = 0.
-    henm_upd = 0.
-    flx_he = 0.
-  endif
+  if (calc_helium == 0) flx_he = 0.
 
   ps0(:,:,io2) = b(1,1)*o2(1,:,:)+b(1,2)*o1(1,:,:)+b(1,3)*he(1,:,:)+fb(1)
   ps0(:,:,io1) = b(2,1)*o2(1,:,:)+b(2,2)*o1(1,:,:)+b(2,3)*he(1,:,:)+fb(2)
@@ -102,6 +97,7 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
   dembardz = dembardz/dz(i_ng)
   dtndz = dtndz/dz(i_ng)
 
+! advecl
   call advec_ng(o2,o2_advec,i_ng)
   call advec_ng(o1,o1_advec,i_ng)
   call advec_ng(he,he_advec,i_ng)
@@ -353,6 +349,11 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
   o1_upd = upd(:,:,:,io1)
   he_upd = upd(:,:,:,ihe)
 
+  if (calc_helium == 0) then
+    he_upd = small
+    henm_upd = small
+  endif
+
   idx_o2 = find_index('O2',bndry)
   idx_o1 = find_index('O1',bndry)
   idx_he = find_index('HE',bndry)
@@ -381,28 +382,31 @@ subroutine comp_ng(n2,o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,ist
   o1nm_upd = dtsmooth_div2*(o1_nm+o1_upd)+dtsmooth*o1
   henm_upd = dtsmooth_div2*(he_nm+he_upd)+dtsmooth*he
 
+  n2 = 1.-o2_upd-o1_upd-he_upd
+  n2nm = 1.-o2nm_upd-o1nm_upd-henm_upd
+
   o2_upd = max(o2_upd,small)
   o1_upd = max(o1_upd,small)
-  he_upd = max(he_upd,small_he)
+  he_upd = max(he_upd,small)
+  n2 = max(n2,small)
 
   o2nm_upd = max(o2nm_upd,small)
   o1nm_upd = max(o1nm_upd,small)
-  henm_upd = max(henm_upd,small_he)
+  henm_upd = max(henm_upd,small)
+  n2nm = max(n2nm,small)
 
-  normalize = o2_upd+o1_upd+he_upd
-  where (1.-small-normalize < 0.)
-    o2_upd = o2_upd*(1.-small)/normalize
-    o1_upd = o1_upd*(1.-small)/normalize
-    he_upd = he_upd*(1.-small)/normalize
+  normalize = o2_upd+o1_upd+he_upd+n2
+  where (normalize > 1.)
+    o2_upd = o2_upd/normalize
+    o1_upd = o1_upd/normalize
+    he_upd = he_upd/normalize
   endwhere
 
-  normalize = o2nm_upd+o1nm_upd+henm_upd
-  where (1.-small-normalize < 0.)
-    o2nm_upd = o2nm_upd*(1.-small)/normalize
-    o1nm_upd = o1nm_upd*(1.-small)/normalize
-    henm_upd = henm_upd*(1.-small)/normalize
+  normalize = o2nm_upd+o1nm_upd+henm_upd+n2nm
+  where (normalize > 1.)
+    o2nm_upd = o2nm_upd/normalize
+    o1nm_upd = o1nm_upd/normalize
+    henm_upd = henm_upd/normalize
   endwhere
-
-  n2 = 1.-o2_upd-o1_upd-he_upd
 
 end subroutine comp_ng
