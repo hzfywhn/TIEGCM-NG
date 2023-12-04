@@ -1,7 +1,8 @@
 subroutine addiag_ng(vc,mbar,barm,xnmbar,xnmbari,scht,schti,z,zg,n2,i_ng)
 
   use params_module,only: nlevp1_ng,glat_ng
-  use cons_module,only: rmassinv,rmassinv_he,dzgrav,gask,grav,p0,boltz
+  use cons_module,only: dzgrav,gask,grav,p0,boltz, &
+    rmassinv_o2,rmassinv_o1,rmassinv_he,rmassinv_n2
   use fields_ng_module,only: flds,itp,dz,expz,expzmid_inv
   use output_ng_module,only: addfld
   implicit none
@@ -41,7 +42,7 @@ subroutine addiag_ng(vc,mbar,barm,xnmbar,xnmbari,scht,schti,z,zg,n2,i_ng)
     vc(:,:,lat) = cs(lat)*vn(:,:,lat)
   enddo
 
-  mbar = 1./(o2*rmassinv(1)+o1*rmassinv(2)+he*rmassinv_he+n2*rmassinv(3))
+  mbar = 1./(o2*rmassinv_o2+o1*rmassinv_o1+he*rmassinv_he+n2*rmassinv_n2)
 
   xnmbar = p0*mbar/(boltz*tn)
   do k = 1,nk

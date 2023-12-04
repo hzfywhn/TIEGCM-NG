@@ -6,7 +6,8 @@ subroutine qrj_ng(rj,qtef,qtotal,qop2p,qop2d,qo2p,qop,qn2p,qnp,qnop,i_ng)
   use cons_module,only: avo,rmassinv_n4s,rmassinv_no,rmassinv_o2,rmassinv_o1,rmassinv_n2
   use qrj_module,only: lmax,l1,sigeuv,rlmeuv,feuv,fsrc,sigsrc,rlmsrc,sigin4s,quench,BPhotonI,BElectronI, &
     brop2pPh,brop2dPh,brop4sPh,bro2DPh,brn2DPh,bro2DIPh,brn2DIPh,brop2pEl,brop2dEl,brop4sEl,bro2DIEl,brn2DIEl,brn2DEl,bro2DEl
-  use fields_ng_module,only: fb,b,flds,itp
+  use lbc,only: fb,b
+  use fields_ng_module,only: flds,itp
   implicit none
 
   integer,intent(in) :: i_ng

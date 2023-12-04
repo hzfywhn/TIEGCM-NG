@@ -1,12 +1,13 @@
 subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,i_ng)
 ! changed the 3d layout to lev,lon,lat (previously lon,lev) in accordance with other subroutines
 
-  use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,glat_ng
+  use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,glat_ng,zpmid_ng
   use init_module,only: iday
   use cons_module,only: pi,dtr,rmassinv_o2,rmassinv_o1,rmassinv_he,rmassinv_n2, &
     rmass_o2,rmass_o1,rmass_he,dtsmooth,dtsmooth_div2,difhor,grav,p0
   use input_module,only: calc_helium
-  use fields_ng_module,only: hor,b,fb,flds,itp,shapiro,dtx2inv,dz,expzmid,expzmid_inv,expz,difk,bndry
+  use fields_ng_module,only: hor,flds,itp,shapiro,dtx2inv,dz,expzmid,expzmid_inv,expz,difk,bndry
+  use lbc,only: b,fb,pshelb
   use char_module,only: find_index
   implicit none
 
@@ -16,11 +17,12 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(inout) :: flx_he
 
   integer,parameter :: io2 = 1, io1 = 2, ihe = 3
-  real,parameter :: tau = 1.86e+3, thdiffalpha = -0.38, t00 = 273., small = 1.e-6
+  real,parameter :: tau = 1.86e+3, thdiffalpha = -0.38, t00 = 273., small = 1.e-9
   real,dimension(3),parameter :: ss = (/1.710,1.749,1.718/)
   real,dimension(3,3),parameter :: delta = reshape((/1.,0.,0.,0.,1.,0.,0.,0.,1./),(/3,3/))
   real,dimension(3,4),parameter :: phi = reshape((/0.,0.673,0.270,1.35,0.,0.404,2.16,1.616,0.,1.11,0.769,0.322/),(/3,4/))
-  integer :: nk,latd0,latd1,k,lat,isp,km,kp,ktmp,m,n,idx_o2,idx_o1,idx_he
+  integer :: nk,lond0,lond1,latd0,latd1,k,i,lat,isp,km,kp,ktmp,m,n,ktop,idx_o2,idx_o1,idx_he
+  real :: zmtop,n2top,n2top1,dn2dz
   logical,dimension(4) :: is_bndry
   real,dimension(flds(i_ng)%latd0:flds(i_ng)%latd1) :: dfactor,rlat
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
@@ -30,7 +32,7 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,3) :: pk,qk,rk,wkm1,alpha
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,3,2) :: ak
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    tn,o2,o2_nm,o1,o1_nm,he,he_nm,w,mbar,hdo2,hdo1,hdhe,n2,n2nm,normalize, &
+    tn,o2,o2_nm,o1,o1_nm,he,he_nm,w,mbar,hdo2,hdo1,hdhe,xnmbar,n2,n2nm,normalize, &
     o2nm_smooth,o1nm_smooth,henm_smooth,o2_advec,o1_advec,he_advec,wi
   real,dimension(0:nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     o2i,o1i,hei,embari,tni,dembardz,dtndz
@@ -51,11 +53,14 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   hdo2 = flds(i_ng)%hdo2
   hdo1 = flds(i_ng)%hdo1
   hdhe = flds(i_ng)%hdhe
+  xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
 
   fs = flds(i_ng)%fs
   tlbc = flds(i_ng)%tlbc
 
   nk = nlevp1_ng(i_ng)
+  lond0 = flds(i_ng)%lond0
+  lond1 = flds(i_ng)%lond1
   latd0 = flds(i_ng)%latd0
   latd1 = flds(i_ng)%latd1
   is_bndry = flds(i_ng)%is_bndry
@@ -350,8 +355,8 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   he_upd = upd(:,:,:,ihe)
 
   if (calc_helium == 0) then
-    he_upd = small
-    henm_upd = small
+    he_upd = pshelb
+    henm_upd = pshelb
   endif
 
   idx_o2 = find_index('O2',bndry)
@@ -385,6 +390,23 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   n2 = 1.-o2_upd-o1_upd-he_upd
   n2nm = 1.-o2nm_upd-o1nm_upd-henm_upd
 
+  do lat = latd0,latd1
+    do i = lond0,lond1
+      do ktop = 1,nk
+        if (n2(ktop,i,lat) < 0.01) exit
+      enddo
+      if (ktop < nk) then
+        zmtop = zpmid_ng(i_ng,ktop)
+        n2top = log(n2(ktop,i,lat)*xnmbar(ktop,i,lat))
+        n2top1 = log(n2(ktop-1,i,lat)*xnmbar(ktop-1,i,lat))
+        dn2dz = (n2top-n2top1)/dz(i_ng)
+        do k = ktop+1,nk
+          n2(k,i,lat) = exp(n2top+dn2dz*(zpmid_ng(i_ng,k)-zmtop))/xnmbar(k,i,lat)
+        enddo
+      endif
+    enddo
+  enddo
+
   o2_upd = max(o2_upd,small)
   o1_upd = max(o1_upd,small)
   he_upd = max(he_upd,small)
@@ -396,17 +418,13 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   n2nm = max(n2nm,small)
 
   normalize = o2_upd+o1_upd+he_upd+n2
-  where (normalize > 1.)
-    o2_upd = o2_upd/normalize
-    o1_upd = o1_upd/normalize
-    he_upd = he_upd/normalize
-  endwhere
+  o2_upd = o2_upd/normalize
+  o1_upd = o1_upd/normalize
+  he_upd = he_upd/normalize
 
   normalize = o2nm_upd+o1nm_upd+henm_upd+n2nm
-  where (normalize > 1.)
-    o2nm_upd = o2nm_upd/normalize
-    o1nm_upd = o1nm_upd/normalize
-    henm_upd = henm_upd/normalize
-  endwhere
+  o2nm_upd = o2nm_upd/normalize
+  o1nm_upd = o1nm_upd/normalize
+  henm_upd = henm_upd/normalize
 
 end subroutine comp_ng

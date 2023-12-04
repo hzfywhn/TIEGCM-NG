@@ -58,7 +58,7 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,ui,vi,i_ng)
   subroutine aurora(latbeg,latend)
 
     use params_module,only: spval
-    use cons_module,only: pi,p0,grav,gask,rmass_o2,rmass_n2,rmassinv_o2,rmassinv_o1,rmassinv_n2,avo,dtr
+    use cons_module,only: pi,p0,grav,gask,rmassinv_o2,rmassinv_o1,rmassinv_n2,avo,dtr
     use input_module,only: iamie,saps,kp
     use magfield_module,only: sunlons
     use aurora_module,only: fac_p2e,alfad,fd,alfac,fc,add_sproton,alfa_sp, &
@@ -82,7 +82,7 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,ui,vi,i_ng)
       aurbound,smlt,smlat,sndec,csdec,sui,svi,swi
     real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,latbeg:latend) :: &
       tn,o2,o1,n2,barm,xnmbar,scht,xalfa1,xalfa2,xcusp,xdrizl,xalfa_sp,xalfa3, &
-      flux1_ion,flux2_ion,cusp_ion,drizl_ion,alfa1_ion,alfa2_ion,alfa3_ion,alfasp_bion, &
+      cusp_ion,drizl_ion,alfa1_ion,alfa2_ion,alfa3_ion,alfasp_bion, &
       barm_t,qsum,denom,p0ez_mbar,tk_mbar,qo2p_aur,qop_aur,qn2p_aur,qaurora, &
       falfa3_alfa3_ion,falfa_sp_alfasp_bion,qo2p_a,qop_a,qn2p_a
     logical,external :: isclose
@@ -211,13 +211,6 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,ui,vi,i_ng)
     tk_mbar = gask*tn/(grav*barm)*p0ez_mbar
     xalfa_sp = (tk_mbar/0.00271)**0.58140/alfa_sp
 
-    flux1_ion = 1.e-20
-    flux2_ion = 1.e-20
-    alfa1_ion = 1.e-20
-    alfa2_ion = 1.e-20
-    cusp_ion = 1.e-20
-    drizl_ion = 1.e-20
-
     if (.not. use_cion) then
       call aion(xalfa1,alfa1_ion,latbeg,latend)
       call aion(xalfa2,alfa2_ion,latbeg,latend)
@@ -251,9 +244,9 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,ui,vi,i_ng)
     qsum = qsum*barm_t
 
     denom = 0.92*n2*rmassinv_n2+1.5*o2*rmassinv_o2+0.56*o1*rmassinv_o1
-    qo2p_aur = qsum*o2/(rmass_o2*denom)+qia(2)
+    qo2p_aur = qsum*o2*rmassinv_o2/denom+qia(2)
     qop_aur = qsum*(0.5*o2*rmassinv_o2+0.56*o1*rmassinv_o1)/denom+qia(3)
-    qn2p_aur = qsum*0.7*n2/(rmass_n2*denom)+qia(1)
+    qn2p_aur = qsum*0.7*n2*rmassinv_n2/denom+qia(1)
 
     do k = 2,nk-1
       qo2p_a(k,:,:) = sqrt(qo2p_aur(k,:,:)*qo2p_aur(k-1,:,:))

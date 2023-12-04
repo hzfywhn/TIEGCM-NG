@@ -59,7 +59,7 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
   where (abs(rlatm) >= pi/4.5) a = 1.
 ! where (abs(rlatm) < pi/4.5) a = .5*(1.+sin(pi*(abs(rlatm)-pi/9.)/(pi/4.5)))
   where (abs(rlatm)<pi/4.5 .and. abs(rlatm)>pi/18) &
-    a = .5*(1.+cos(pi*(abs(rlatm)-pi/4.5)/(pi/6.)))
+    a = .5*(1.+cos(abs(rlatm)*6.-pi*4./3.))
   where (abs(rlatm) <= pi/18) a = 0.
 
 ! fed = (-5.0e+7*f107te*a-4.0e+7*f107te)*1.2
@@ -144,6 +144,7 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
   do k = 1,nk-1
     qtot(k,:,:) = sqrt(qtot(k,:,:)*qtot(k+1,:,:))
   enddo
+  qtot(nk,:,:) = 0.
 
   do k = 1,nk-1
     root_ne(k,:,:) = ne(k,:,:)*ne(k+1,:,:)
@@ -182,9 +183,7 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
   loss_en = loss_en2
 
   if (et) then
-    where (te>500.0 .and. Q2>0.0)
-      loss_en = loss_en*exp(-7.54E-4*(te-500.0))
-    endwhere
+    where (te>500.0 .and. Q2>0.0) loss_en = loss_en*exp(-7.54E-4*(te-500.0))
   endif
 
   loss_eo2 = o2n*(1.21e-18*(1.+3.6e-2*root_te)*root_te+6.9e-14/root_te+3.125e-21*te**2)

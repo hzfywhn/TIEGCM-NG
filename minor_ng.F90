@@ -4,7 +4,8 @@ subroutine minor_ng(fcomp,fcomp_tm1,fcomp_out,fcomp_tm1_out,sloss,sprod,flbc,fub
   use cons_module,only: rmassinv_o2,rmassinv_o1,rmassinv_n2,p0,rmass_o2,rmass_o1,rmass_n2, &
     dtr,pi,grav,avo,dtsmooth,dtsmooth_div2,difhor,rmassinv_he
   use init_module,only: iday
-  use fields_ng_module,only: hor,b,fb,flds,itp,itc,shapiro,dtx2inv,dzp,expzmid_inv,expzmid,expz,difk,bndry
+  use lbc,only: b,fb
+  use fields_ng_module,only: hor,flds,itp,itc,shapiro,dtx2inv,dzp,expzmid_inv,expzmid,expz,difk,bndry
   use char_module,only: find_index
   implicit none
 

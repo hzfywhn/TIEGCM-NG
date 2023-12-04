@@ -2,7 +2,8 @@ subroutine qinite_ng(qo2p,qop,qn2p,qnp,qnop,qtef,i_ng)
 
   use params_module,only: nlevp1_ng
   use cons_module,only: rmassinv_o2,rmassinv_o1,rmassinv_n2,rmassinv_no
-  use fields_ng_module,only: fb,b,flds,itp
+  use lbc,only: fb,b
+  use fields_ng_module,only: flds,itp
   implicit none
 
   integer,intent(in) :: i_ng

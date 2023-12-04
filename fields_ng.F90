@@ -65,10 +65,6 @@ module fields_ng_module
   real,parameter :: hor = .25 ! hor in cons_module is simply a constant
   real,parameter :: t0 = 0. ! t0 is not currently used, not sure whether it will be used in the future
 
-! fb,b are constant along lon, simplify to lon-independent constants
-  real,dimension(3) :: fb
-  real,dimension(3,3) :: b
-
 ! common fields across processes
   integer,dimension(mx_ng) :: itp,itc,maxlon,maxlat
   integer,dimension(:,:,:),allocatable :: domain

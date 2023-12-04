@@ -1,10 +1,10 @@
 subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
 
-  use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,zpmid_ng,glat_ng,zpint_ng
+  use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,zpint_ng
   use cons_module,only: rmass_op,gask,grav,re,rmassinv_o2,rmassinv_o1, &
     rmassinv_n2,rmassinv_n2d,dtsmooth,dtsmooth_div2,pi,rtd,rmassinv_he
   use chemrates_module,only: rk10,rk16,rk17,rk18,rk21,rk22,rk23,rk24,rk26,rk27
-  use input_module,only: enforce_opfloor,colfac,opdiffcap,nstep_sub
+  use input_module,only: colfac,opdiffcap,nstep_sub
   use fields_ng_module,only: flds,itp,shapiro,dtx2inv,dlamda,dphi,dlev,dz
   use dffm_ng_module,only: df_2d,df_3d
   implicit none
@@ -14,9 +14,9 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(out) :: &
     opout,optm1out,xiop2p,xiop2d,Fe,Fn
 
-  real,parameter :: explic = 1., opmin = 3000., phid = 2.0e8, phin = -2.0e8, ppolar = 0.
+  real,parameter :: explic = 1., phid = 2.0e8, phin = -2.0e8, ppolar = 0.
   integer :: nk,latd0,latd1,k,lat
-  real :: gmr,opfloor
+  real :: gmr
   logical,dimension(4) :: is_bndry
   real,dimension(flds(i_ng)%latd0:flds(i_ng)%latd1) :: cs
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
@@ -73,12 +73,11 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
   rlatm = flds(i_ng)%rlatm
 
 ! oplus_flux
-  where (abs(rlatm) >= pi/24.)
-    a = 1.
-  elsewhere
-    a = .5*(1.+sin(pi*(abs(rlatm)-pi/48.)/(pi/24.)))
-  endwhere
-  a = max(a,0.05)
+  where (abs(rlatm) >= pi/4.5) a = 1.
+  where (abs(rlatm)<pi/4.5 .and. abs(rlatm)>pi/18) &
+    a = .5*(1.+cos(abs(rlatm)*6.-pi*4./3.))
+  where (abs(rlatm) <= pi/18) a = 0.
+
   fed = phid*a
   fen = phin*a
   where (chi >= 0.5*pi)
@@ -332,17 +331,8 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
 
   optm1out = dtsmooth*op+dtsmooth_div2*(optm1+opout)
 
-  opout = max(opout,1.e-5)
-  optm1out = max(optm1out,1.e-5)
-
-  if (enforce_opfloor > 0) then
-    do k = 1,nk-1
-      do lat = latd0,latd1
-        opfloor = opmin*exp(-(glat_ng(i_ng,lat)/90.0)**2/0.3)*exp(-((zpmid_ng(i_ng,k)-4.25)/zpmid_ng(i_ng,nk))**2/0.1)
-        opout(k,:,lat) = max(opout(k,:,lat),opfloor)
-      enddo
-    enddo
-  endif
+  opout = max(opout,0.)
+  optm1out = max(optm1out,0.)
 
   contains
 !-----------------------------------------------------------------------

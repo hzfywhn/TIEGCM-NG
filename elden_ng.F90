@@ -1,6 +1,6 @@
 subroutine elden_ng(nplus,n2p,nop,o2p,electrons,i_ng)
 
-  use params_module,only: nlevp1_ng
+  use params_module,only: nlevp1_ng,zpmid_ng
   use cons_module,only: rmassinv_o2,rmassinv_n2d,rmassinv_o1,rmassinv_n2,rmassinv_no,rmassinv_n4s
   use chemrates_module,only: rk4,rk5,rk6,rk7,rk8,rk9,rk10,rk16,rk23,rk26
   use fields_ng_module,only: flds,itp,itc
@@ -10,11 +10,11 @@ subroutine elden_ng(nplus,n2p,nop,o2p,electrons,i_ng)
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(out) :: &
     nplus,n2p,nop,o2p,electrons
 
-  real,parameter :: err = 1.e-300
   integer :: nk,k
+  integer,dimension(1) :: idx
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     xnmbar,op,op_upd,o2,o1,n2,n2d,no,n4s,xiop2p,xiop2d,rk1,rk2,rk3,beta9,ra1,ra2,ra3,qnp,qnop,qo2p,qn2p, &
-    a0,a1,a2,a3,a4,a,b,c,d,e,fg,h,root,w1,w2,w3,qnpi,qnopi,beta9i,qo2pi,qn2pi
+    a0,a1,a2,a3,a4,a,b,c,d,e,fg,h,root,np_prod,np_loss,delta,w1,w2,w3,qnpi,qnopi,beta9i,qo2pi,qn2pi
 
   xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
   op = flds(i_ng)%op(:,:,:,itp(i_ng))
@@ -55,7 +55,13 @@ subroutine elden_ng(nplus,n2p,nop,o2p,electrons,i_ng)
   qo2pi(nk,:,:) = 1.5*qo2p(nk,:,:)-.5*qo2p(nk-1,:,:)
   qn2pi(nk,:,:) = 1.5*qn2p(nk,:,:)-.5*qn2p(nk-1,:,:)
 
-  nplus = (qnpi+rk10*op*n2d*xnmbar*rmassinv_n2d)/(xnmbar*((rk6+rk7)*o2*rmassinv_o2+rk8*o1*rmassinv_o1))
+  np_prod = qnpi+rk10*op*n2d*xnmbar*rmassinv_n2d
+  np_loss = (rk6+rk7)*o2*rmassinv_o2+rk8*o1*rmassinv_o1
+  nplus = np_prod/(xnmbar*np_loss)
+  idx = minloc(abs(zpmid_ng(i_ng,1:nlevp1_ng(i_ng))-7))
+  do k = idx(1),nk
+    where (nplus(k,:,:) > nplus(k-1,:,:)) nplus(k,:,:) = nplus(k-1,:,:)
+  enddo
 
   a = qnopi+xnmbar*(rk2*op_upd*n2*rmassinv_n2+rk7*nplus*o2*rmassinv_o2+beta9i*no*rmassinv_no)
   b = qo2pi+xnmbar*(rk1*op_upd+rk6*nplus)*o2*rmassinv_o2+rk26*xiop2d*o2*rmassinv_o2
@@ -74,15 +80,36 @@ subroutine elden_ng(nplus,n2p,nop,o2p,electrons,i_ng)
 ! vquart
   w1 = -(a4*a0-4.*a3*a1+3.*a2**2)/12.
   w2 = (a4*(a2*a0-a1**2)-a3*(a3*a0-a1*a2)+a2*(a3*a1-a2**2))/4.
-  root = -2.*real((.5*(w2+sqrt(cmplx(w2**2+4.*w1**3+err)))+err)**(1./3.))
-  w1 = sqrt(max(a4*root+a3**2-a4*a2+err,0.))
-  w2 = sqrt((2.*root+a2)**2-a4*a0+err)
-  w3 = 2.*a3*root+a3*a2-a4*a1+err
+
+  root = -2.*real((.5*(w2+sqrt(cmplx(w2**2+4.*w1**3))))**(1./3.))
+
+  delta = a4*root+a3**2-a4*a2
+  where (delta <= 0.)
+    w1 = 0.
+  elsewhere
+    w1 = sqrt(delta)
+  endwhere
+
+  delta = (2.*root+a2)**2-a4*a0
+  where (delta <= 0.)
+    w2 = 0.
+  elsewhere
+    w2 = sqrt(delta)
+  endwhere
+
+  w3 = 2.*a3*root+a3*a2-a4*a1
   w1 = sign(w1,w2*w3)
   w3 = w1-a3
-  root = (w3+sqrt(w3**2-a4*(a2+2.*root-w2)))/a4
 
-  root = max(root,1.0)
+  delta = w3**2-a4*(a2+2.*root-w2)
+  where (delta <= 0.)
+    root = w3/a4
+  elsewhere
+    root = (w3+sqrt(delta))/a4
+  endwhere
+
+  root = max(root,1.)
+
   n2p = d/(e+ra3*root)
   o2p = (b+h*d/(e+ra3*root))/(c+ra2*root)
   nop = (a+d*(e-h)/(e+ra3*root)+c*(b+h*d/(e+ra3*root))/(c+ra2*root))/(ra1*root)

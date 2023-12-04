@@ -14,18 +14,13 @@ subroutine set_const_fields_ng
     use params_module,only: n_ng,nlevp1_ng,zibot,glat_ng
     use cons_module,only: default_step,smooth_fac,dtr,re,difk,dift,xmue
     use input_module,only: step,dlev_ng,dlat_ng,dlon_ng,nstep_ng
-    use lbc,only: fb,b
-    use fields_ng_module,only: flds,fb_ng=>fb,b_ng=>b, &
-      step_ng=>step,shapiro,dtx2inv, &
+    use fields_ng_module,only: flds,step_ng=>step,shapiro,dtx2inv, &
       dlev,dphi,dlamda,dz,dzp,expzmid,expzmid_inv,expz, &
       difk_ng=>difk,dift_ng=>dift,xmue_ng=>xmue
 
     real,parameter :: omega = 7.292E-5
     integer :: i_ng,k,latd0,latd1
     real :: expdz
-
-    fb_ng = fb(1,:)
-    b_ng = b(1,:,:)
 
     step_ng(1) = step/nstep_ng(1)
     do i_ng = 2,n_ng

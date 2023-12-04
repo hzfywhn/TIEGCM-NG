@@ -1,7 +1,8 @@
 subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
 
   use params_module,only: nlevp1_ng
-  use cons_module,only: rmassinv_o2,rmassinv_o1,rmassinv_n2,rmass_o2,rmass_o1,avo,rtd
+  use cons_module,only: rmass_o2,rmass_o1,rmass_no, &
+    rmassinv_o2,rmassinv_o1,rmassinv_n2,rmassinv_no,avo,rtd
   use input_module,only: colfac
   use fields_ng_module,only: flds,itp,dipmin
   implicit none
@@ -10,8 +11,8 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(out) :: &
     lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2
 
-  real,parameter :: qe = 1.602e-19, qeomeo10 = 1.7588028E7, qeoNao10 = 9.6489E3, rmass_nop = 30., &
-    rmassinv_nop = 1./rmass_nop, rnu_op_o2 = 6.64E-10, rnu_nop_o2 = 4.27E-10, rnu_o2p_o = 2.31E-10, &
+  real,parameter :: qe = 1.602e-19, qeomeo10 = 1.7588028E7, qeoNao10 = 9.6489E3, &
+    rnu_op_o2 = 6.64E-10, rnu_nop_o2 = 4.27E-10, rnu_o2p_o = 2.31E-10, &
     rnu_nop_o = 2.44E-10, rnu_o2p_n2 = 4.13E-10, rnu_op_n2 = 6.82E-10, rnu_nop_n2 = 4.34E-10, &
     Me = 9.109E-31, Mp = 1.6726E-27, Kb = 1.38E-23
   integer :: nk,k
@@ -47,7 +48,7 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
   qe_fac = qe*1.e10/bmod2
   omega_op = qeoNao10*bmod2*rmassinv_o1
   omega_o2p = qeoNao10*bmod2*rmassinv_o2
-  omega_nop = qeoNao10*bmod2*rmassinv_nop
+  omega_nop = qeoNao10*bmod2*rmassinv_no
   omega_op_inv = 1./omega_op
   omega_o2p_inv = 1./omega_o2p
   omega_nop_inv = 1./omega_nop
@@ -128,7 +129,7 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
   hall_out = sigma_hall
 
   Ki = 1/ne*(op/rnu_op+o2p/rnu_o2p+nop/rnu_nop)
-  Mi = 1/ne*(op*rmass_o1+o2p*rmass_o2+nop*rmass_nop)
+  Mi = 1/ne*(op*rmass_o1+o2p*rmass_o2+nop*rmass_no)
 
   E1 = (1.0+rnu_ne/Ki)*sqrt(Kb*(1.0+Ki**2)/(1.0-Ki**2)*(te+ti)/(Mi*Mp))
   do k = 1,nk

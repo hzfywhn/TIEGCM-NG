@@ -58,8 +58,7 @@
      |  ntask_lon,       ! number of tasks in longitude dimension
      |  ntask_maglat,    ! number of tasks in mag latitude  dimension (not namelist)
      |  ntask_maglon,    ! number of tasks in mag longitude dimension (not namelist)
-     |  calc_helium,     ! calculate helium if calc_helium=1, otherwise set he=0.
-     |  enforce_opfloor  ! if > 0, enforce O+ floor (see oplus.F)
+     |  calc_helium      ! calculate helium if calc_helium=1, otherwise set he=0.
       real ::
      |  tide(10),        ! semidiurnal tide amplitudes and phases
      |  tide2(2),        ! diurnal tide amplitude and phase
@@ -128,6 +127,8 @@
      |  tidi_ncfile,        ! TIDI data (U,V)
      |  ctmt_ncfile,        ! CTMT tidal data (T,U,V,Z)
      |  bgrddata_ncfile,    ! background data (T,U,V,Z; V=0)
+     |  amienh_ncfile,      ! AMIE NH
+     |  amiesh_ncfile,      ! AMIE SH
      |  he_coefs_ncfile,    ! coefficients of Helium flux at upper boundary
      |  vedata,             ! SAPS ve data file
      |  vndata,             ! SAPS vn data file
@@ -193,7 +194,7 @@
      |  kp_time,al_time,swden_time,swvel_time,indices_interp,
      |  imf_ncfile,saber_ncfile,tidi_ncfile,sech_nbyte,f107_time,
      |  f107a_time,hpss_path,current_pg,current_kq,calc_helium,
-     |  enforce_opfloor,bgrddata_ncfile,ctmt_ncfile,opdiffcap,
+     |  bgrddata_ncfile,ctmt_ncfile,opdiffcap,
      |  amienh,amiesh,amie_ibkg,he_coefs_ncfile,et,saps,
      |  vedata,vndata,vvdata,
      |  nesting,nstep_ng,dlev_ng,glat0_ng,glat1_ng,dlat_ng,
@@ -277,8 +278,10 @@
 
       saber_ncfile = ' '      ! SABER data file
       tidi_ncfile = ' '       ! TIDI data file
-      bgrddata_ncfile = ' '   ! Background data file
       ctmt_ncfile = ' '       ! CTMT data file for lbc tides 
+      bgrddata_ncfile = ' '   ! Background data file
+      amienh_ncfile = ' '     ! AMIE NH data file
+      amiesh_ncfile = ' '     ! AMIE NH data file
       he_coefs_ncfile = ' '   ! Helium coefficients
       vedata = ' '
       vndata = ' '
@@ -305,7 +308,6 @@
       colfac  = spval
       joulefac= spval
       calc_helium = ispval
-      enforce_opfloor = ispval
       opdiffcap = spval
       et = .false.
       saps = .false.
@@ -657,15 +659,6 @@
 ! nudging data files:
       if (len_trim(nudge_ncfile) > 0) call expand_path(nudge_ncfile)
 !
-! If enforce_opfloor > 0, then enforce O+ floor (see oplus.F)
-!
-      if (enforce_opfloor==ispval.or.enforce_opfloor > 0) then
-        enforce_opfloor = 1
-      elseif (enforce_opfloor <= 0) then
-        enforce_opfloor = 0
-      endif
-      write(6,"('Input: enforce_opfloor=',i3)") enforce_opfloor
-!
 ! 1/12/05 btf: removed old dynamo (was in dynamo_old.F)
 ! 6/11/08 btf: remove dynamo==0 option
 !
@@ -694,6 +687,8 @@
         write(6,"('Will read AMIE data inputs')")
         iamie = 1
         potential_model = 'AMIE'
+        amienh_ncfile = trim(amienh)
+        amiesh_ncfile = trim(amiesh)
       endif
 !
 ! Save certain params as originally read by namelist read:

@@ -8,6 +8,8 @@
 !
 ! Advance the model in time.
 !
+      logical :: cleanup
+!
       contains
 !-----------------------------------------------------------------------
       subroutine advance
@@ -52,7 +54,7 @@
      |  glon0,zmbot,zibot,zitop,n_ng,nlon_ng,nlat_ng,
      |  nlevp1_ng,glon_ng,glat_ng,zpmid_ng,zpint_ng
       use amie_module,only: getamie,tiepot
-      use output,only: outhist
+      use output,only: outhist,output_hist
       use addfld_module,only: addfld
       use lbc,only: tuvz_lbc,t_lbc,u_lbc,v_lbc,z_lbc
       use fields_ng_module,only:
@@ -84,6 +86,7 @@
       use mpi_module,only: 
      |  mytid,mp_bndlats,ntask,lat0,lat1,lon0,lon1,
      |  mp_bndlons,mp_polelats,mp_periodic_f4d,TIEGCM_WORLD
+      use getapex_module,only: apxparm
 !
       implicit none
 #ifdef VT
@@ -109,6 +112,7 @@
      |  time0_prep,     time1_prep,
      |  time0_init,     time1_init
       character(len=3) :: timing_type
+      logical :: adv
       real,dimension(:,:),allocatable :: wt,ext_fld,tmp_lbc
       real,dimension(:,:,:),allocatable :: tmp_f4d,nclbc
       real,dimension(:,:,:,:),allocatable :: ncf4d
@@ -126,6 +130,9 @@
 !     code = 115 ; state = 'advance' ; activity='ModelCode'
       call vtbegin(115,ier)
 #endif
+!
+! A hook for handling OS signals (SIGINT/SIGTERM)
+      call register_signal_handler
 !
       write(6,"(/,'Enter advance: iter=',i10,' nstep=',i10)") iter,nstep
       call timer(time0_init,time1_init,'INIT',0,0)
@@ -288,7 +295,7 @@
 ! Update calendar day and sun's location and declination:
 ! (sub advance_day also updates sfeps)
 !
-      if (calendar_advance > 0) call advance_day
+      if (calendar_advance > 0) call advance_day(adv)
       call sunloc_apex(iyear,iday,secs)! locate sun's longitude
       if (debug) write(6,"('advance after sunloc')")
       if (calendar_advance > 0) dday = real(iday)+secs/86400.
@@ -577,8 +584,8 @@
       if (debug) write(6,"('advance after hdif1')")
 !
 ! Horizontal diffusion, second step:
-! hdif2 saves 3d diagnostics f3d (fkldt,u,v,o2,o) at j+1 (0->37)
-! hdif2: WRITE (fkldt,u,v,o2,o1) <- READ (tn_nm,un_nm,vn_nm,o2_nm,o1_nm)
+! hdif2 saves 3d diagnostics f3d (fkldt,u,v,o2,o,he) at j+1 (0->37)
+! hdif2: WRITE (fkldt,u,v,o2,o1,he) <- READ (tn_nm,un_nm,vn_nm,o2_nm,o1_nm,he_nm)
 ! The kld terms will be used later in hdif3.
 !
 ! Call method 1 (contiguous actual args, lat loop inside):
@@ -662,6 +669,9 @@
 ! Call dynamo if namelist idynamo > 0:
 !
       if (idynamo > 0) then
+        if (calendar_advance > 0) then
+          if (adv) call apxparm(iyear+iday/366.)
+        endif
 !
 ! Calculate addition to electrodynamo RHS (current due to plasma 
 ! pressure and gravity)
@@ -840,6 +850,14 @@
       endif ! time2write
       call timer(time0_step,time1,'STEP',0,0) ! resume step timing (non-MPI)
 !
+! Only Intel and GNU can capture SIGINT/SIGTERM and perform cleanup work
+! Other compilers will simply skip this check
+      if (cleanup) then
+! A new volume will always be created for primary histories (restart)
+        call output_hist(istep,.true.)
+        call shutdown('Received termination signal, exiting ...')
+      endif
+!
 ! Periodic points for all updated fields:
       call mp_periodic_f4d(itc)
       if (debug) write(6,"('advance after mp_periodic_f4d')")
@@ -884,13 +902,15 @@
 !
       end subroutine advance
 !-----------------------------------------------------------------------
-      subroutine advance_day
+      subroutine advance_day(adv)
 !
 ! Advance calendar day if needed. Also update sfeps.
 !
       use init_module,only: iter,iyear,iday,sfeps,sin_sundec,cos_sundec
       use cons_module,only: dt,pi
       implicit none
+!
+      logical,intent(out) :: adv
 !
 ! Local:
       integer :: idayit,idayprev,iyearprev,iyr4,iyr100,iyr400,lpyr,ienda
@@ -930,6 +950,9 @@
 !
         write(6,"('Advancing day (previous,present)=',4i5,' sfeps=',
      |   e12.4)") idayprev,iyearprev,iday,iyear,sfeps
+        adv = .true.
+      else
+        adv = .false.
       endif
       end subroutine advance_day
 !-----------------------------------------------------------------------
@@ -1059,5 +1082,48 @@
 !    |  ' emlam3d, and emz3d')")
 
       end subroutine nodynamo
+!-----------------------------------------------------------------------
+      subroutine register_signal_handler
+! Register signal handler to OS to catch SIGINT/SIGTERM
+! Intel and GNU have different forms of function calls
+! Other compilers are not supported yet
+
+#ifdef INTEL
+      use ifport,only: signal,sigint,sigterm
+#endif
+
+#ifdef GNU
+! Defined by POSIX, hard code here
+      integer,parameter :: sigint=2,sigterm=15
+#endif
+
+      integer :: ret
+
+#ifdef INTEL
+      ret = signal(sigint,signal_handler,-1)
+      ret = signal(sigterm,signal_handler,-1)
+#endif
+
+#ifdef GNU
+      ret = signal(sigint,signal_handler)
+      ret = signal(sigterm,signal_handler)
+#endif
+
+      cleanup = .false.
+
+      end subroutine register_signal_handler
+!-----------------------------------------------------------------------
+      function signal_handler(signum) result(ret)
+! This handler does only one thing: change the cleanup flag to true
+! Note that only with Intel and GNU this function will be called
+! Otherwise the cleanup flag stays false all the time
+
+      integer,intent(in) :: signum
+      integer :: ret
+
+      cleanup = .true.
+      ret = 0
+
+      end function signal_handler
 !-----------------------------------------------------------------------
       end module advance_module

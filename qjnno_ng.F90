@@ -36,11 +36,11 @@ subroutine qjnno_ng(qtotal,i_ng)
     n2d*rmassinv_n2d*(beta2*o2*rmassinv_o2*1.84+beta4*o1*rmassinv_o1*2.38+beta5*nei*2.38/xnmbar+beta6*no*rmassinv_no*5.63))
 
   do k = 2,nk-1
-    dq(k,:,:) = deltaq(k-1,:,:)*deltaq(k,:,:)
+    dq(k,:,:) = sqrt(max(deltaq(k-1,:,:)*deltaq(k,:,:),1.e-20))
   enddo
-  dq = sqrt(max(dq,1.e-20))
   dq(1,:,:) = 1.5*deltaq(1,:,:)-0.5*deltaq(2,:,:)
   dq(nk,:,:) = 1.5*deltaq(nk-1,:,:)-0.5*deltaq(nk-2,:,:)
+
   qtotal = qtotal+dq
 
 end subroutine qjnno_ng

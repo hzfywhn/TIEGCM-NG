@@ -13,7 +13,7 @@ subroutine qjion_ng(qtotal,i_ng)
   integer :: nk,k
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     o2,o1,n2,o2p,op,n4s,n2d,no,ne,xnmbar,xnmbari,n2p,nplus,nop,xiop2p,xiop2d, &
-    rk1,rk2,rk3,ra1,ra2,ra3,rk19,rk20,rk25,qop2p,qop2d,qo2p,qop,qn2p,qnp,qnop,qtot,qphoto,qic,nei
+    rk1,rk2,rk3,ra1,ra2,ra3,rk19,rk20,rk25,qop2p,qop2d,qo2p,qop,qn2p,qnp,qnop,qtot,qphoto,qic,nei,qici
 
   o2 = flds(i_ng)%o2(:,:,:,itp(i_ng))
   o1 = flds(i_ng)%o1(:,:,:,itp(i_ng))
@@ -68,15 +68,16 @@ subroutine qjion_ng(qtotal,i_ng)
     (avo*(((rk16*3.02+rk17*0.7)*n2*rmassinv_n2+rk18*o1*rmassinv_o1*5.0)*xiop2p+ &
     (rk23*n2*rmassinv_n2*1.33+rk24*o1*rmassinv_o1*3.31+rk26*4.87*o2*rmassinv_o2)*xiop2d)+ &
     (nei*((rk19*5.0+rk20*1.69)*xiop2p+rk25*3.31*xiop2d)-(rk21*5.02+rk22*1.69)*xiop2p-rk27*3.33*xiop2d)/xnmbar)*evergs
-  qic = max(qic,1.e-30)
+
+  qic = max(qic,1.e-20)
 
   do k = 1,nk-2
-    qtot(k+1,:,:) = sqrt(qic(k,:,:)*qic(k+1,:,:))
+    qici(k+1,:,:) = sqrt(qic(k,:,:)*qic(k+1,:,:))
   enddo
-  qtot(1,:,:) = sqrt(qic(1,:,:)**3/qic(2,:,:))
-  qtot(nk,:,:) = sqrt(qic(nk-1,:,:)**3/qic(nk-2,:,:))
+  qici(1,:,:) = sqrt(qic(1,:,:)**3/qic(2,:,:))
+  qici(nk,:,:) = sqrt(qic(nk-1,:,:)**3/qic(nk-2,:,:))
 
-  qtot = qphoto+qtot
+  qtot = qphoto+qici
 
   qtotal = qtotal+qtot
 

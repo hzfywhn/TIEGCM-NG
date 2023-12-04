@@ -66,7 +66,7 @@ subroutine chapman_ng(vo2,vo1,vn2,sco2,sco1,scn2,chi,i_ng)
     real,dimension(nk,lond0:lond1,latd0:latd1),intent(in) :: f
     real,dimension(nk,lond0:lond1,latd0:latd1),intent(out) :: v,s
 
-    real,parameter :: big = 1.e80
+    real,parameter :: big = 1.e80, logbig = log(big)
     integer :: k
     real :: rtpi
     real,dimension(lond0:lond1,latd0:latd1) :: exparg,r2ig
@@ -95,7 +95,7 @@ subroutine chapman_ng(vo2,vo1,vn2,sco2,sco1,scn2,chi,i_ng)
 
     do k = 1,nk
       exparg = rp(k,:,:)*(1.-sin_chi)*grav*fmass/gask/ti(k,:,:)
-      where (idn==1 .and. exparg<650.)
+      where (idn==1 .and. exparg<logbig)
         r2ig = 2.*v(k,:,:)*exp(exparg)*rtpi*rt_sinchi*rtrp(k,:,:)
       elsewhere
         r2ig = big
