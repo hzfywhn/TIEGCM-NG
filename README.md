@@ -1,5 +1,6 @@
 The nested\-grid module part of TIEGCM \(TIEGCM itself is not included in this repository\)
 
+
 The code design largely follows the original TIEGCM 2\.0 with reduced function calls for simplicity
 All netcdf procedures use the Fortran 90 interface and mpi procedures use the f08 interface
 The essential differences regarding the design of nested grid are commented in each file
@@ -21,7 +22,7 @@ The additional input parameters for TIEGCM\-NG are explained as follows:
 13. NUDGE\_USE\_REFDATE: logical specifying whether NUDGE\_REFDATE will be used; default is false
 	- if NUDGE\_USE\_REFDATE is false, then two integer fields should be included in NUDGE\_NCFILE: date and datesec
 	- date is a 8\-digit integer specifying the year,month,day \(YYYYMMDD\), datesec measures the seconds counting from the current day \(00:00\)
-	- if NUDGE\_USE\_REFDATE is true, then a integer field should be included in NUDGE\_NCFILE: time, which counts the seconds since NUDGE\_REFDATE 
+	- if NUDGE\_USE\_REFDATE is true, then a integer field should be included in NUDGE\_NCFILE: time, which counts the seconds since NUDGE\_REFDATE
 14. NUDGE\_REFDATE: two integers specifying the time of the zero point in NUDGE\_NCFILE; defaults are START\_YEAR,START\_DAY
 15. NUDGE\_SPONGE: two real numbers, specifying the horizontal \(in degree\) and vertical \(in scale height\) relaxation span, this should not exceed NUDGE\_NCFILE lon/lat/lev/ilev range; defaults are 0\.0
 16. NUDGE\_DELTA: two real numbers, specifying the horizontal \(in degree\) and vertical \(in scale height\) exponential decaying factor; defaults are 1\.0
