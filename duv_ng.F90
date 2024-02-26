@@ -5,6 +5,7 @@ subroutine duv_ng(un_upd,unm_upd,vn_upd,vnm_upd,ulbc,vlbc,ulbc_nm,vlbc_nm,istep,
   use cons_module,only: p0,grav,re,dtsmooth_div2,dtsmooth,dzgrav,re_inv
   use fields_ng_module,only: flds,itp,itc,shapiro,dtx2inv,dlamda,dphi,dz,expz,xmue,bndry
   use char_module,only: find_index
+  use output_ng_module,only: addfld
   implicit none
 
   integer,intent(in) :: istep,i_ng
@@ -21,7 +22,9 @@ subroutine duv_ng(un_upd,unm_upd,vn_upd,vnm_upd,ulbc,vlbc,ulbc_nm,vlbc_nm,istep,
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: u_lbc,v_lbc,tlbc_nm
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     tn,tn_upd,tn_nm,un,vn,un_nm,vn_nm,w_upd,mbar,scht,schti,z,hdu,hdv,ui,vi,lxx,lyy,lxy,lyx,km,Fe,Fn, &
-    g,dwdz,tni,advec_un,advec_vn,zl,zp,unm_smooth,vnm_smooth,eddyvisc,ss_un,ss_vn, &
+    g,dwdz,tni,advec_un,advec_vn,zl,zp,unm_smooth,vnm_smooth,eddyvisc, &
+    ss_un,ss_vn,dudt,dvdt,un_cor,vn_cor,un_cen,vn_cen,un_drag,vn_drag, &
+    un_drag_coef,vn_drag_coef,un_visc,vn_visc,un_dwdz,vn_dwdz, &
     ztmp,tbar,dztbar,lxxi,lyyi,lxyi,lyxi,uii,vii,uni,vni,wi,g_1,qq_a
   real,dimension(2,nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: ss,xx,yy
   real,dimension(2,2,nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: pp,qq,rr,beta,gamma
@@ -121,8 +124,10 @@ subroutine duv_ng(un_upd,unm_upd,vn_upd,vnm_upd,ulbc,vlbc,ulbc_nm,vlbc_nm,istep,
   vni(nk,:,:) = 1.5*vn(nk,:,:)-.5*vn(nk-1,:,:)
   wi(nk,:,:) = 1.5*w_upd(nk,:,:)-.5*w_upd(nk-1,:,:)
 
-  ss(1,:,:,:) = lxxi*uii+lxyi*vii-advec_un+Fe
-  ss(2,:,:,:) = lyyi*vii-lyxi*uii-advec_vn+Fn
+  un_drag_coef = Fe+lxxi*uii+lxyi*vii
+  vn_drag_coef = Fn+lyyi*vii-lyxi*uii
+  ss(1,:,:,:) = un_drag_coef-advec_un
+  ss(2,:,:,:) = vn_drag_coef-advec_vn
   do k = 1,nk
     ss(:,k,:,:) = ss(:,k,:,:)*expz(i_ng,k)
   enddo
@@ -252,6 +257,39 @@ subroutine duv_ng(un_upd,unm_upd,vn_upd,vnm_upd,ulbc,vlbc,ulbc_nm,vlbc_nm,istep,
 
   un_upd = xx(1,:,:,:)
   vn_upd = xx(2,:,:,:)
+
+  dudt = dtx2inv(i_ng)*(un_upd-unm_smooth)
+  dvdt = dtx2inv(i_ng)*(vn_upd-vnm_smooth)
+  do lat = latd0,latd1
+    un_cor(:,:,lat) = cor(lat)*vn_upd(:,:,lat)
+    vn_cor(:,:,lat) = -cor(lat)*un_upd(:,:,lat)
+    un_cen(:,:,lat) = un(:,:,lat)*vn_upd(:,:,lat)/re*tanphi(lat)
+    vn_cen(:,:,lat) = -un(:,:,lat)*un_upd(:,:,lat)/re*tanphi(lat)
+  enddo
+  un_drag = un_drag_coef-lxxi*un_upd-lxyi*vn_upd
+  vn_drag = vn_drag_coef-lyyi*vn_upd+lyxi*un_upd
+  do k = 2,nk-1
+    un_visc(k,:,:) = (g(k+1,:,:)*un_upd(k+1,:,:)- &
+      (g(k+1,:,:)+g(k,:,:))*un_upd(k,:,:)+ &
+      g(k,:,:)*un_upd(k-1,:,:))/expz(i_ng,k)
+    vn_visc(k,:,:) = (g(k+1,:,:)*vn_upd(k+1,:,:)- &
+      (g(k+1,:,:)+g(k,:,:))*vn_upd(k,:,:)+ &
+      g(k,:,:)*vn_upd(k-1,:,:))/expz(i_ng,k)
+    un_dwdz(k,:,:) = dwdz(k,:,:)*(un_upd(k+1,:,:)-un_upd(k-1,:,:))
+    vn_dwdz(k,:,:) = dwdz(k,:,:)*(vn_upd(k+1,:,:)-vn_upd(k-1,:,:))
+  enddo
+  call addfld(dudt,'DUV_DUDT',i_ng)
+  call addfld(dvdt,'DUV_DVDT',i_ng)
+  call addfld(un_cor,'DUV_UN_COR',i_ng)
+  call addfld(vn_cor,'DUV_VN_COR',i_ng)
+  call addfld(un_cen,'DUV_UN_CEN',i_ng)
+  call addfld(vn_cen,'DUV_VN_CEN',i_ng)
+  call addfld(un_drag,'DUV_UN_DRAG',i_ng)
+  call addfld(vn_drag,'DUV_VN_DRAG',i_ng)
+  call addfld(un_visc,'DUV_UN_VISC',i_ng)
+  call addfld(vn_visc,'DUV_VN_VISC',i_ng)
+  call addfld(un_dwdz,'DUV_UN_DWDZ',i_ng)
+  call addfld(vn_dwdz,'DUV_VN_DWDZ',i_ng)
 
   idx_un = find_index('UN',bndry)
   idx_vn = find_index('VN',bndry)

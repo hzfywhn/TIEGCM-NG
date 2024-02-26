@@ -1,6 +1,6 @@
 subroutine elden_ng(nplus,n2p,nop,o2p,electrons,i_ng)
 
-  use params_module,only: nlevp1_ng,zpmid_ng
+  use params_module,only: nlevp1_ng
   use cons_module,only: rmassinv_o2,rmassinv_n2d,rmassinv_o1,rmassinv_n2,rmassinv_no,rmassinv_n4s
   use chemrates_module,only: rk4,rk5,rk6,rk7,rk8,rk9,rk10,rk16,rk23,rk26
   use fields_ng_module,only: flds,itp,itc
@@ -11,10 +11,9 @@ subroutine elden_ng(nplus,n2p,nop,o2p,electrons,i_ng)
     nplus,n2p,nop,o2p,electrons
 
   integer :: nk,k
-  integer,dimension(1) :: idx
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     xnmbar,op,op_upd,o2,o1,n2,n2d,no,n4s,xiop2p,xiop2d,rk1,rk2,rk3,beta9,ra1,ra2,ra3,qnp,qnop,qo2p,qn2p, &
-    a0,a1,a2,a3,a4,a,b,c,d,e,fg,h,root,np_prod,np_loss,delta,w1,w2,w3,qnpi,qnopi,beta9i,qo2pi,qn2pi
+    a0,a1,a2,a3,a4,a,b,c,d,e,fg,h,root,o2_cm3,o1_cm3,delta,w1,w2,w3,qnpi,qnopi,beta9i,qo2pi,qn2pi
 
   xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
   op = flds(i_ng)%op(:,:,:,itp(i_ng))
@@ -55,13 +54,9 @@ subroutine elden_ng(nplus,n2p,nop,o2p,electrons,i_ng)
   qo2pi(nk,:,:) = 1.5*qo2p(nk,:,:)-.5*qo2p(nk-1,:,:)
   qn2pi(nk,:,:) = 1.5*qn2p(nk,:,:)-.5*qn2p(nk-1,:,:)
 
-  np_prod = qnpi+rk10*op*n2d*xnmbar*rmassinv_n2d
-  np_loss = (rk6+rk7)*o2*rmassinv_o2+rk8*o1*rmassinv_o1
-  nplus = np_prod/(xnmbar*np_loss)
-  idx = minloc(abs(zpmid_ng(i_ng,1:nlevp1_ng(i_ng))-7))
-  do k = idx(1),nk
-    where (nplus(k,:,:) > nplus(k-1,:,:)) nplus(k,:,:) = nplus(k-1,:,:)
-  enddo
+  o2_cm3 = o2*rmassinv_o2*xnmbar
+  o1_cm3 = max(o1*rmassinv_o1*xnmbar,1e4)
+  nplus = (qnpi+rk10*op*n2d*xnmbar*rmassinv_n2d)/((rk6+rk7)*o2_cm3+rk8*o1_cm3)
 
   a = qnopi+xnmbar*(rk2*op_upd*n2*rmassinv_n2+rk7*nplus*o2*rmassinv_o2+beta9i*no*rmassinv_no)
   b = qo2pi+xnmbar*(rk1*op_upd+rk6*nplus)*o2*rmassinv_o2+rk26*xiop2d*o2*rmassinv_o2

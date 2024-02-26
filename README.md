@@ -1,6 +1,5 @@
 The nested\-grid module part of TIEGCM \(TIEGCM itself is not included in this repository\)
 
-
 The code design largely follows the original TIEGCM 2\.0 with reduced function calls for simplicity
 All netcdf procedures use the Fortran 90 interface and mpi procedures use the f08 interface
 The essential differences regarding the design of nested grid are commented in each file

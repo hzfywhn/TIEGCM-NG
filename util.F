@@ -313,7 +313,7 @@
 !
       real,intent(in) :: x1,x2
 !
-#if defined(IRIX) || defined(AIX)
+#if defined (IRIX) || defined (AIX)
       sdcmplx = dcmplx(x1,x2)
 #elif UNICOS
       sdcmplx = cmplx(x1,x2)
@@ -338,7 +338,7 @@
       integer,intent(in) :: iprint
       real,parameter :: xmin=-708., xmax=+709., big=.1e305
 !
-#if defined(IRIX) || defined(AIX) || defined(OSF1) || defined(SUN) || defined(LINUX)
+#if defined (IRIX) || defined (AIX) || defined (OSF1) || defined (SUN) || defined (LINUX)
       if (x >= xmin .and. x <= xmax) then
         expo = exp(x)
       elseif (x < xmin) then
@@ -813,31 +813,6 @@
       endif
       end subroutine timer
 !-----------------------------------------------------------------------
-      subroutine getcwdir(cwd)
-!
-      use mpi_module,only: mytid, TIEGCM_WORLD
-      use mpi
-!
-! Return current working directory in cwd:
-!
-      implicit none
-      character(len=*),intent(out) :: cwd
-      integer,external :: isystem,nextlu
-      integer :: istat,lu,ier
-!
-      if (mytid==0) then
-        istat = isystem('pwd > cwd')
-        if (istat /= 0) write(6,"('>>> WARNING getcwdir: error return ',
-     |    'isystem(''pwd > cwd'')')")
-      endif
-      call mpi_barrier(TIEGCM_WORLD,ier)
-      lu = nextlu()
-      open(lu,file='cwd',status='old')
-      read(lu,"(a)") cwd
-      close(lu)
-!
-      end subroutine getcwdir
-!-----------------------------------------------------------------------
       character(len=n) function trcase(string,n)
 !
 ! Translate case of input string string, i.e., return string like string,
@@ -898,7 +873,7 @@
 ! Shutdown MPI:
       write(6,"('Shutdown calling mpi_abort..')")
       write(6,"(72('>'))")
-      call mpi_abort(TIEGCM_WORLD,errorcode,ier)
+      call mpi_abort(MPI_COMM_WORLD,errorcode,ier)
 
       write(6,"(/,'For information, please see TGCM Users Guide at ',
      |  /,'http://www.hao.ucar.edu/modeling/tgcm/doc/userguide')")

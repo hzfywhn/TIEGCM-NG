@@ -7,6 +7,7 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
   use input_module,only: colfac,opdiffcap,nstep_sub
   use fields_ng_module,only: flds,itp,shapiro,dtx2inv,dlamda,dphi,dlev,dz
   use dffm_ng_module,only: df_2d,df_3d
+  use output_ng_module,only: addfld
   implicit none
 
   integer,intent(in) :: istep,i_ng
@@ -23,11 +24,11 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
     bx,by,bz,bmod2,dipmag,sndec,csdec,chi,rlatm,opflux,dvb,ubca,ubcb,a,fed,fen,cs_by,dbxdx,dcs_bydy,sncsdip
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     tn,te,ti,o2,o1,n2,he,n2d,ne,u,v,w,ui,vi,wi,xnmbar,scht,qop2p,qop2d,qop,rk1,rk2,rk19,rk20,rk25, &
-    bdzdvb_op,explicit,hdz,tphdz1,tphdz0,djint,divbz,hdzmbz,hdzpbz,p_coeff,q_coeff,r_coeff,bdotu, &
-    op_loss,tp1,hj,bvel,diffj,tp,tr,bdotdh_op,bdotdh_opj,bdotdh_diff,dj,optm1_smooth,vni,wd, &
-    wni,uii,vii,wii,qop2pi,qop2di,qopi,hdzi,tp_op,dtp_opdz,op_bmod2,dbveldx,dbveldy,dop_bmod2dx,dop_bmod2dy, &
-    exp1,exp2,tp1_0,tp1_1,dj_bz,ddj_bzdx,ddj_bzdy,divbz1,divbz2,djint_tphdz0,djint_tphdz0_1, &
-    djint_tphdz1,djint_tphdz1_1,bz_bdotu_1,bdotu_dvb_bz
+    bdzdvb_op,explicit,hdz,tphdz1,tphdz0,djint,divbz,hdzmbz,hdzpbz,p_coeff,q_coeff,r_coeff,tp1,wd, &
+    bdotdh_djbz,op_prod,op_loss_out,dopdt,diffsum,driftsum,windsum,hj,bdotu,bvel,diffj,tp,tr, &
+    bdotdh_op,bdotdh_opj,bdotdh_diff,dj,optm1_smooth2,op_loss,vni,djbz,vdotn_h,bdotdh_bvel,diffexp, &
+    diffp,diffq,diffr,driftp,driftq,driftr,windp,windq,windr,wni,uii,vii,wii,qop2pi,qop2di,qopi,hdzi, &
+    tp_op,dtp_opdz,dbdotdh_opjdz,op_bmod2,dop_bmod2dx,dop_bmod2dy,vdotn_x,vdotn_y
   logical,external :: isclose
   external :: smooth_ng,trsolv_ng
 
@@ -122,8 +123,9 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
   qopi(nk,:,:) = 1.5*qop(nk,:,:)-.5*qop(nk-1,:,:)
 
 ! rrk
-  vni = o1*rmassinv_o1*sqrt(tr)*(1.-0.064*log10(tr))**2*colfac+ &
-    18.6*n2*rmassinv_n2+18.1*o2*rmassinv_o2+3.6*he*rmassinv_he
+  vni = 18.1*o2*rmassinv_o2+ &
+    o1*rmassinv_o1*sqrt(tr)*(1.-0.064*log10(tr))**2*colfac+ &
+    3.6*he*rmassinv_he+18.6*n2*rmassinv_n2
   dj = 1.42E17/(xnmbar*vni)
   vni = 16*3.53E-11*vni
   if (.not. isclose(opdiffcap,0.)) then
@@ -154,7 +156,7 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
 
   tp = tp_op
 
-  call smooth_ng(optm1,optm1_smooth,shapiro(i_ng)/nstep_sub,i_ng)
+  call smooth_ng(optm1,optm1_smooth2,shapiro(i_ng)/nstep_sub,i_ng)
 
   wd = vni*diffj*dj
   sncsdip = sin(dipmag)*cos(dipmag)
@@ -163,10 +165,12 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
     Fn(k,:,:) = wd(k,:,:)*sncsdip*csdec
   enddo
 
-  call bdotdh(diffj,bdotdh_op)
   do k = 1,nk
-    bdotdh_op(k,:,:) = dj(k,:,:)*bz*bdotdh_op(k,:,:)
+    djbz(k,:,:) = dj(k,:,:)*bz
   enddo
+
+  call bdotdh(diffj,bdotdh_op)
+  bdotdh_op = djbz*bdotdh_op
 
   call bdotdh(tp,bdotdh_opj)
   bdotdh_opj = bdotdh_opj*dj
@@ -175,35 +179,36 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
 
 ! bdzdvb
   do k = 2,nk-2
-    bdzdvb_op(k,:,:) = bz/(2.*hj(k,:,:)*dz(i_ng))*(bdotdh_opj(k+1,:,:)-bdotdh_opj(k-1,:,:))+ &
-      dvb*bdotdh_opj(k,:,:)
+    dbdotdh_opjdz(k,:,:) = (bdotdh_opj(k+1,:,:)-bdotdh_opj(k-1,:,:))/2.
   enddo
-  bdzdvb_op(nk-1,:,:) = bz/(hj(nk-1,:,:)*dz(i_ng))*(bdotdh_opj(nk-1,:,:)-bdotdh_opj(nk-2,:,:))+ &
-    dvb*bdotdh_opj(nk-1,:,:)
-  bdzdvb_op(nk,:,:) = bz/(hj(nk,:,:)*dz(i_ng))*(bdotdh_opj(nk,:,:)-bdotdh_opj(nk-1,:,:))+ &
-    dvb*bdotdh_opj(nk,:,:)
-  bdzdvb_op(1,:,:) = bz/(hj(1,:,:)*dz(i_ng))*(bdotdh_opj(2,:,:)-bdotdh_opj(1,:,:))+ &
-    dvb*bdotdh_opj(1,:,:)
+  dbdotdh_opjdz(nk-1,:,:) = bdotdh_opj(nk-1,:,:)-bdotdh_opj(nk-2,:,:)
+  dbdotdh_opjdz(nk,:,:) = bdotdh_opj(nk,:,:)-bdotdh_opj(nk-1,:,:)
+  dbdotdh_opjdz(1,:,:) = bdotdh_opj(2,:,:)-bdotdh_opj(1,:,:)
+  do k = 1,nk
+    bdzdvb_op(k,:,:) = bz/(hj(k,:,:)*dz(i_ng))*dbdotdh_opjdz(k,:,:)+dvb*bdotdh_opj(k,:,:)
+  enddo
 
-  explicit = -explic*(bdzdvb_op+bdotdh_diff+bdotdh_op)
+  diffexp = bdzdvb_op+bdotdh_diff+bdotdh_op
+  explicit = -explic*diffexp
+
+  call bdotdh(bvel,bdotdh_bvel)
 
   do k = 1,nk
     op_bmod2(k,:,:) = op(k,:,:)/bmod2**2
   enddo
-  call df_3d(bvel,dbveldx,1,i_ng)
   call df_3d(op_bmod2,dop_bmod2dx,1,i_ng)
-  call df_3d(bvel,dbveldy,-1,i_ng)
   call df_3d(op_bmod2,dop_bmod2dy,-1,i_ng)
-
-  do k = 1,nk
-    exp1(k,:,:) = bx*dbveldx(k,:,:)+uii(k,:,:)*bmod2**2*dop_bmod2dx(k,:,:)
-    exp2(k,:,:) = by*dbveldy(k,:,:)+vii(k,:,:)*bmod2**2*dop_bmod2dy(k,:,:)
-  enddo
+  vdotn_x = uii*dop_bmod2dx
+  vdotn_y = vii*dop_bmod2dy
   do lat = latd0,latd1
-    exp1(:,:,lat) = exp1(:,:,lat)/cs(lat)
+    vdotn_x(:,:,lat) = vdotn_x(:,:,lat)/cs(lat)
+  enddo
+  vdotn_h = 1./re*(vdotn_x/dlamda(i_ng)+vdotn_y/dphi(i_ng))
+  do k = 1,nk
+    vdotn_h(k,:,:) = vdotn_h(k,:,:)*bmod2**2
   enddo
 
-  explicit = explicit+1./re*(exp1/dlamda(i_ng)+exp2/dphi(i_ng))
+  explicit = explicit+vdotn_h+bdotdh_bvel
 
   dvb = dvb/bz
   hdz = 1./(hj*dz(i_ng))
@@ -217,15 +222,12 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
 
   gmr = grav*rmass_op/(2.*gask)
 
-  tp1_0 = tp1
-  tp1_0(nk,:,:) = 2.*tp1(nk-1,:,:)-tp1(nk-2,:,:)
-  tphdz1 = 2.*tp1_0*hdzi+gmr
-
+  tphdz1 = 2.*tp1*hdzi+gmr
   do k = 1,nk-1
-    tp1_1(k+1,:,:) = tp1(k,:,:)
+    tphdz0(k+1,:,:) = 2.*tp1(k,:,:)*hdzi(k+1,:,:)-gmr
   enddo
-  tp1_1(1,:,:) = 2.*tp1(1,:,:)-tp1(2,:,:)
-  tphdz0 = 2.*tp1_1*hdzi-gmr
+  tphdz1(nk,:,:) = 2.*(2.*tp1(nk-1,:,:)-tp1(nk-2,:,:))*hdzi(nk,:,:)+gmr
+  tphdz0(1,:,:) = 2.*(2.*tp1(1,:,:)-tp1(2,:,:))*hdzi(1,:,:)-gmr
 
   do k = 1,nk-2
     djint(k+1,:,:) = 0.5*(dj(k,:,:)+dj(k+1,:,:))
@@ -233,23 +235,9 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
   djint(1,:,:) = 1.5*dj(1,:,:)-0.5*dj(2,:,:)
   djint(nk,:,:) = 1.5*dj(nk-1,:,:)-0.5*dj(nk-2,:,:)
 
+  call bdotdh(djbz,bdotdh_djbz)
   do k = 1,nk
-    dj_bz(k,:,:) = dj(k,:,:)*bz
-  enddo
-  call df_3d(dj_bz,ddj_bzdx,1,i_ng)
-  call df_3d(dj_bz,ddj_bzdy,-1,i_ng)
-
-  do k = 1,nk
-    divbz1(k,:,:) = bx*ddj_bzdx(k,:,:)
-    divbz2(k,:,:) = by*ddj_bzdy(k,:,:)
-  enddo
-  do lat = latd0,latd1
-    divbz1(:,:,lat) = divbz1(:,:,lat)/cs(lat)
-  enddo
-
-  divbz = 1./(re*dj)*(divbz1/dlamda(i_ng)+divbz2/dphi(i_ng))
-  do k = 1,nk
-    divbz(k,:,:) = dvb+divbz(k,:,:)/bz**2
+    divbz(k,:,:) = dvb+bdotdh_djbz(k,:,:)/(dj(k,:,:)*bz**2)
   enddo
 
   hdzmbz = hdz-0.5*divbz
@@ -259,43 +247,35 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
     hdzpbz(k,:,:) = hdzpbz(k,:,:)*bz**2
   enddo
 
-  explicit = explicit-optm1_smooth*dtx2inv(i_ng)*nstep_sub
+  explicit = explicit-optm1_smooth2*dtx2inv(i_ng)*nstep_sub
 
-  djint_tphdz0 = djint*tphdz0
+  diffp = hdzmbz*djint*tphdz0
   do k = 1,nk-1
-    djint_tphdz0_1(k,:,:) = djint_tphdz0(k+1,:,:)
+    diffq(k,:,:) = -(hdzpbz(k,:,:)*djint(k+1,:,:)*tphdz0(k+1,:,:)+hdzmbz(k,:,:)*djint(k,:,:)*tphdz1(k,:,:))
+    diffr(k,:,:) = hdzpbz(k,:,:)*djint(k+1,:,:)*tphdz1(k+1,:,:)
   enddo
-  djint_tphdz0_1(nk,:,:) = 2*djint_tphdz0(nk,:,:)-djint_tphdz0(nk-1,:,:)
+  diffq(nk,:,:) = -(hdzpbz(nk,:,:)*(2.*djint(nk,:,:)*tphdz0(nk,:,:)-djint(nk-1,:,:)*tphdz0(nk-1,:,:))+ &
+    hdzmbz(nk,:,:)*djint(nk,:,:)*tphdz1(nk,:,:))
+  diffr(nk,:,:) = hdzpbz(nk,:,:)*(2.*djint(nk,:,:)*tphdz1(nk,:,:)-djint(nk-1,:,:)*tphdz1(nk-1,:,:))
 
-  djint_tphdz1 = djint*tphdz1
-  do k = 1,nk-1
-    djint_tphdz1_1(k,:,:) = djint_tphdz1(k+1,:,:)
-  enddo
-  djint_tphdz1_1(nk,:,:) = 2*djint_tphdz1(nk,:,:)-djint_tphdz1(nk-1,:,:)
-
-  p_coeff = hdzmbz*djint_tphdz0
-  q_coeff = -(hdzpbz*djint_tphdz0_1+hdzmbz*djint_tphdz1)
-  r_coeff = hdzpbz*djint_tphdz1_1
-
-  do k = 1,nk-1
-    bz_bdotu_1(k+1,:,:) = bz*bdotu(k,:,:)
-  enddo
-  bz_bdotu_1(1,:,:) = bz*(2.*bdotu(1,:,:)-bdotu(2,:,:))
-  p_coeff = p_coeff+(bz_bdotu_1+wii)*0.5*hdz
-
-  q_coeff = q_coeff-wii*6./re
+  driftp = wii*0.5*hdz
+  driftq = -wii*6./re
+  driftr = -wii*0.5*hdz
 
   do k = 1,nk-2
-    bz_bdotu_1(k,:,:) = bz*bdotu(k+1,:,:)
+    windp(k+1,:,:) = bz*bdotu(k,:,:)*0.5*hdz(k+1,:,:)
+    windq(k,:,:) = -bdotu(k,:,:)*dvb*bz
+    windr(k,:,:) = -bz*bdotu(k+1,:,:)*0.5*hdz(k,:,:)
   enddo
-  bz_bdotu_1(nk-1,:,:) = bz*(2.*bdotu(nk-1,:,:)-bdotu(nk-2,:,:))
-  bz_bdotu_1(nk,:,:) = bz*(2.*bdotu(nk,:,:)-bdotu(nk-1,:,:))
-  r_coeff = r_coeff-(bz_bdotu_1+wii)*0.5*hdz
+  windp(1,:,:) = bz*(2.*bdotu(1,:,:)-bdotu(2,:,:))*0.5*hdz(1,:,:)
+  windq(nk-1,:,:) = -bdotu(nk-1,:,:)*dvb*bz
+  windr(nk-1,:,:) = bz*(2.*bdotu(nk-1,:,:)-bdotu(nk-2,:,:))*0.5*hdz(nk-1,:,:)
+  windq(nk,:,:) = -bdotu(nk,:,:)*dvb*bz
+  windr(nk,:,:) = bz*(2.*bdotu(nk,:,:)-bdotu(nk-1,:,:))*0.5*hdz(nk,:,:)
 
-  do k = 1,nk
-    bdotu_dvb_bz(k,:,:) = bdotu(k,:,:)*dvb*bz
-  enddo
-  q_coeff = q_coeff-bdotu_dvb_bz-dtx2inv(i_ng)*nstep_sub
+  p_coeff = diffp+driftp+windp
+  q_coeff = diffq+driftq+windq-dtx2inv(i_ng)*nstep_sub
+  r_coeff = diffr+driftr+windr
 
   ubcb = -bz**2*djint(nk,:,:)*tphdz0(nk,:,:)
   ubca = -bz**2*djint(nk,:,:)*tphdz1(nk,:,:)
@@ -314,7 +294,10 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
 
   q_coeff = q_coeff-op_loss
 
-  explicit = explicit-qopi-(rk19*ne+rk21)*xiop2p-(rk25*ne+rk27)*xiop2d-(rk18*xiop2p+rk24*xiop2d)*o1*rmassinv_o1*xnmbar
+  op_prod = qopi+(rk19*ne+rk21)*xiop2p+(rk25*ne+rk27)*xiop2d+(rk18*xiop2p+rk24*xiop2d)*o1*rmassinv_o1*xnmbar
+  call addfld(op_prod,'OP_PROD',i_ng)
+
+  explicit = explicit-op_prod
 
   q_coeff(1,:,:) = q_coeff(1,:,:)-p_coeff(1,:,:)
   explicit(1,:,:) = explicit(1,:,:)-2.*p_coeff(1,:,:)*qop(1,:,:)/(1.5*op_loss(1,:,:)-0.5*op_loss(2,:,:))
@@ -323,6 +306,25 @@ subroutine oplus_ng(op,optm1,opout,optm1out,xiop2p,xiop2d,Fe,Fn,istep,i_ng)
   call trsolv_ng(p_coeff,q_coeff,r_coeff,explicit,opout,nk-1,i_ng)
 
   opout(nk,:,:) = opout(nk-1,:,:)**2/opout(nk-2,:,:)
+
+  op_loss_out = op_loss*opout
+  dopdt = (opout-optm1_smooth2)*dtx2inv(i_ng)*nstep_sub
+  do k = 2,nk-1
+    diffsum(k,:,:) = diffexp(k,:,:)+diffp(k,:,:)*opout(k-1,:,:)+diffq(k,:,:)*opout(k,:,:)+diffr(k,:,:)*opout(k+1,:,:)
+    driftsum(k,:,:) = -vdotn_h(k,:,:)+driftp(k,:,:)*opout(k-1,:,:)+driftq(k,:,:)*opout(k,:,:)+driftr(k,:,:)*opout(k+1,:,:)
+    windsum(k,:,:) = -bdotdh_bvel(k,:,:)+windp(k,:,:)*opout(k-1,:,:)+windq(k,:,:)*opout(k,:,:)+windr(k,:,:)*opout(k+1,:,:)
+  enddo
+  diffsum(1,:,:) = 2.*diffsum(2,:,:)-diffsum(3,:,:)
+  driftsum(1,:,:) = 2.*driftsum(2,:,:)-driftsum(3,:,:)
+  windsum(1,:,:) = 2.*windsum(2,:,:)-windsum(3,:,:)
+  diffsum(nk,:,:) = 2.*diffsum(nk-1,:,:)-diffsum(nk-2,:,:)
+  driftsum(nk,:,:) = 2.*driftsum(nk-1,:,:)-driftsum(nk-2,:,:)
+  windsum(nk,:,:) = 2.*windsum(nk-1,:,:)-windsum(nk-2,:,:)
+  call addfld(-op_loss_out,'OP_LOSS',i_ng)
+  call addfld(dopdt,'DOPDT',i_ng)
+  call addfld(diffsum,'OP_DIFF',i_ng)
+  call addfld(driftsum,'OP_DRIFT',i_ng)
+  call addfld(windsum,'OP_WIND',i_ng)
 
   if (is_bndry(1)) opout(:,-1,:) = flds(i_ng)%op_lon_b(:,1,:,istep)
   if (is_bndry(2)) opout(:,nlon_ng(i_ng)+2,:) = flds(i_ng)%op_lon_b(:,2,:,istep)

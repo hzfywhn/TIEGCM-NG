@@ -24,7 +24,7 @@
      |  calendar_advance,gpi_ncfile,potential_model,wei05sc_ncfile,
      |  imf_ncfile,current_pg,current_kq,iamie,amie_ibkg,
      |  start_day,nesting,dlev_ng,dlat_ng,dlon_ng,glat0_ng,glat1_ng,
-     |  glon0_ng,glon1_ng,nudge_level,nudge_f4d,nudge_alpha
+     |  glon0_ng,glon1_ng,nudge_level,nudge_lbc,nudge_f4d,nudge_alpha
       use input_module,only: 
      |  power  ,power_time  ,ntimes_power, rd_power,
      |  ctpoten,ctpoten_time,ntimes_ctpoten, rd_ctpoten,
@@ -69,8 +69,7 @@
      |  nudge_update=>update,nudge_finalize=>finalize,
      |  nudge_nlb=>nlb,nudge_nf4d=>nf4d,
      |  nudge_time=>time,nudge_itime=>itime,
-     |  nudge_fields=>flds,nudge_lbc=>lbc_flag,
-     |  f4d_idx,wrap
+     |  nudge_fields=>flds,lbc_flag,f4d_idx,wrap
 !
 ! Routines and timing for parallel dynamo (pdynamo.F):
       use pdynamo_module,only: dynamo_inputs,pdynamo,pefield,
@@ -407,7 +406,7 @@
           wt = nudge_alpha*nudge_fields(0)%hori_weight
 
           do ifld = 1,nudge_nlb
-            if (nudge_lbc(ifld)) then
+            if (lbc_flag(ifld)) then
               select case (ifld)
                 case (1)
                   tmp_lbc = t_lbc(lon0:lon1,latbeg:latend)

@@ -5,6 +5,7 @@ subroutine dt_ng(tn_upd,tn_nm_upd,tlbc,tlbc_nm,istep,i_ng)
   use cons_module,only: rmassinv_o1,tsurplus,p0,avo,grav,gask,dtsmooth,dtsmooth_div2
   use fields_ng_module,only: flds,itp,itc,shapiro,dtx2inv,dz,expzmid_inv,expz,dift,bndry
   use char_module,only: find_index
+  use output_ng_module,only: addfld
   implicit none
 
   integer,intent(in) :: istep,i_ng
@@ -18,8 +19,8 @@ subroutine dt_ng(tn_upd,tn_nm_upd,tlbc,tlbc_nm,istep,i_ng)
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: t_lbc,ulbc,vlbc
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     tn,tn_nm,un,vn,o1,mbar,xnmbar,scht,schti,cp,kt,km,hdt,qji_tn,cool_imp,cool_exp,w_upd, &
-    qtotal,rkm12,cptn,qm,total_heat,dudz,dvdz,g,f,h,rho,tni,p,q,r,rhs,qpart,tnsmooth, &
-    advec_tn,advec,cpi,kmi,wi,total_heat_a,gpart,gpart_a,p_1,r_0,qpart_a
+    qtotal,rkm12,cptn,qm,total_heat,dudz,dvdz,g,f,h,rho,tni,p,q,r,rhs,qpart,solarq,recombq, &
+    conductq,coolq,advecq,adiaq,tnsmooth,advec_tn,advec,cpi,kmi,wi,total_heat_a,gpart,gpart_a,p_1,r_0,qpart_a
   external :: advec_ng,smooth_ng,trsolv_ng
 
   tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
@@ -78,17 +79,6 @@ subroutine dt_ng(tn_upd,tn_nm_upd,tlbc,tlbc_nm,istep,i_ng)
     cptn(k,:,:) = cptn(k,:,:)*expz(i_ng,k)
   enddo
 
-  do k = 1,nk-1
-    total_heat(k,:,:) = .5*(qtotal(k,:,:)+qtotal(k+1,:,:))
-  enddo
-  total_heat(nk,:,:) = 1.5*qtotal(nk,:,:)-.5*total_heat(nk-1,:,:)
-
-  total_heat = total_heat+hdt
-
-  total_heat = total_heat+tsurplus*rkm12*(xnmbar*o1*rmassinv_o1)**2*avo/mbar
-
-  total_heat = total_heat+qji_tn
-
   do k = 2,nk-2
     dudz(k,:,:) = (un(k+1,:,:)-un(k-1,:,:))/(2.*dz(i_ng))
     dvdz(k,:,:) = (vn(k+1,:,:)-vn(k-1,:,:))/(2.*dz(i_ng))
@@ -100,11 +90,25 @@ subroutine dt_ng(tn_upd,tn_nm_upd,tlbc,tlbc_nm,istep,i_ng)
   dudz(nk,:,:) = dudz(nk-1,:,:)/3.
   dvdz(nk,:,:) = dvdz(nk-1,:,:)/3.
 
+  do k = 1,nk-1
+    solarq(k,:,:) = .5*(qtotal(k,:,:)+qtotal(k+1,:,:))
+  enddo
+  solarq(nk,:,:) = 1.5*qtotal(nk,:,:)-.5*qtotal(nk-1,:,:)
+
+  recombq = tsurplus*rkm12*(xnmbar*o1*rmassinv_o1)**2*avo/mbar
+
   qm = grav*kmi/(p0*scht)*(dudz**2+dvdz**2)
   do k = 1,nk
     qm(k,:,:) = qm(k,:,:)/expz(i_ng,k)
   enddo
-  total_heat = total_heat+qm
+
+  total_heat = solarq+hdt+recombq+qji_tn+qm
+
+  call addfld(solarq,'DT_SOLAR',i_ng)
+  call addfld(hdt,'DT_HORDIF',i_ng)
+  call addfld(recombq,'DT_RECOMB',i_ng)
+  call addfld(qji_tn,'DT_JOULE',i_ng)
+  call addfld(qm,'DT_MOLDIF',i_ng)
 
   do k = 1,nk
     total_heat_a(k,:,:) = total_heat(k,:,:)*expz(i_ng,k)
@@ -123,6 +127,8 @@ subroutine dt_ng(tn_upd,tn_nm_upd,tlbc,tlbc_nm,istep,i_ng)
   do k = 1,nk
     rho(k,:,:) = rho(k,:,:)*expz(i_ng,k)
   enddo
+
+  call addfld(rho,'DEN',i_ng)
 
   gpart = h**2*rho*cp
   do k = 1,nk
@@ -167,6 +173,22 @@ subroutine dt_ng(tn_upd,tn_nm_upd,tlbc,tlbc_nm,istep,i_ng)
   call trsolv_ng(p,q,r,rhs,tn_upd,nk-1,i_ng)
 
   tn_upd(nk,:,:) = tn_upd(nk-1,:,:)**2/tn_upd(nk-2,:,:)
+
+  do k = 2,nk-1
+    conductq(k,:,:) = (tn_upd(k-1,:,:)*(-f(k,:,:)+g(k,:,:))+ &
+      tn_upd(k,:,:)*(f(k+1,:,:)-f(k,:,:)-g(k+1,:,:)-g(k,:,:))+ &
+      tn_upd(k+1,:,:)*(f(k+1,:,:)+g(k+1,:,:)))/expz(i_ng,k)
+  enddo
+  coolq = cpi*cool_imp*tn_upd
+  do k = 1,nk
+    coolq(k,:,:) = -cool_exp(k,:,:)/expz(i_ng,k)-coolq(k,:,:)
+  enddo
+  advecq = -cpi*advec_tn
+  adiaq = -wi*gask/mbar*tn_upd
+  call addfld(conductq,'DT_CONDUCT',i_ng)
+  call addfld(coolq,'DT_COOL',i_ng)
+  call addfld(advecq,'DT_ADVEC',i_ng)
+  call addfld(adiaq,'DT_ADIA',i_ng)
 
 ! a hook to apply Dirichlet lateral boundary conditions, also see duv,comp,oplus,swdot
   idx_tn = find_index('TN',bndry)

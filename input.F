@@ -58,7 +58,8 @@
      |  ntask_lon,       ! number of tasks in longitude dimension
      |  ntask_maglat,    ! number of tasks in mag latitude  dimension (not namelist)
      |  ntask_maglon,    ! number of tasks in mag longitude dimension (not namelist)
-     |  calc_helium      ! calculate helium if calc_helium=1, otherwise set he=0.
+     |  calc_helium,     ! calculate helium if calc_helium=1, otherwise set he=0.
+     |  electron_heating
       real ::
      |  tide(10),        ! semidiurnal tide amplitudes and phases
      |  tide2(2),        ! diurnal tide amplitude and phase
@@ -134,13 +135,16 @@
      |  vndata,             ! SAPS vn data file
      |  vvdata              ! SAPS vv data file
 
+      logical :: oneway   ! logical to use oneway mix reader
+      character(len=mxlen_filename) :: mixfile ! filename for oneway driving
+
 !     integer,parameter :: ngpivars = 4
 !     real :: gpi_vars(ngpivars) ! f107,f107a,power,ctpoten
 !     character(len=16) ::
 !    |  gpi_names(ngpivars)      ! names of gpi_vars
 !
 ! Primary history user input (dimension parameters are in params.F):
-      character(len=1024) :: 
+      character(len=mxlen_filename) ::
      |  source,            ! file containing source history (optional)
      |  output(mxhvols)    ! output file(s) (required)
       integer ::
@@ -152,7 +156,7 @@
      |  noutput            ! number of output files given
 !
 ! Secondary history user input (dimension parameters are in params.F):
-      character(len=1024) :: 
+      character(len=mxlen_filename) ::
      |  secsource,            ! file containing source sec_history (for mhd)
      |  secout(mxhvols)       ! secondary history output file(s)
       character(len=16) ::
@@ -194,9 +198,9 @@
      |  kp_time,al_time,swden_time,swvel_time,indices_interp,
      |  imf_ncfile,saber_ncfile,tidi_ncfile,sech_nbyte,f107_time,
      |  f107a_time,hpss_path,current_pg,current_kq,calc_helium,
-     |  bgrddata_ncfile,ctmt_ncfile,opdiffcap,
+     |  bgrddata_ncfile,ctmt_ncfile,opdiffcap,electron_heating,
      |  amienh,amiesh,amie_ibkg,he_coefs_ncfile,et,saps,
-     |  vedata,vndata,vvdata,
+     |  vedata,vndata,vvdata,oneway,mixfile,
      |  nesting,nstep_ng,dlev_ng,glat0_ng,glat1_ng,dlat_ng,
      |  glon0_ng,glon1_ng,dlon_ng,fileout_ng,varout_ng,
      |  nudge_ncfile,nudge_flds,nudge_lbc,nudge_f4d,nudge_level,
@@ -213,7 +217,7 @@
      |   'ZMAG            '/)   ! see sub dynamo_inputs in pdynamo.F
 !
 ! Current working (execution) directory (set by tgcm.F):
-      character(len=120) :: cwd  ! current working directory
+      character(len=mxlen_filename) :: cwd  ! current working directory
       integer :: pid ! current process id
 !
       contains
@@ -309,8 +313,12 @@
       joulefac= spval
       calc_helium = ispval
       opdiffcap = spval
+      electron_heating = ispval
       et = .false.
       saps = .false.
+
+      oneway = .false.
+      mixfile = 'msphere.mix.h5'
 
       f107    = spval
       f107a   = spval
@@ -624,6 +632,19 @@
       else
         write(6,"('Input: O+ diffusion maximum (opdiffcap)=',es12.4)")
      |    opdiffcap
+      endif
+
+      if (electron_heating == ispval) electron_heating = 6
+      if (electron_heating == 4) then
+        write(6,"('Input: thermal electron heating scheme uses',
+     |    'default 4th order Swartz & Nisbet [1972] formula')")
+      elseif (electron_heating == 6) then
+        write(6,"('Input: thermal electron heating scheme uses',
+     |    '6th order Smithtro & Solomon [2008] formula')")
+      else
+        write(6,"('>>> INPUT: ELECTRON_HEATING can only be 4 or 6,'
+     |    'but it is given as',i4)") electron_heating
+        call shutdown('Invalid thermal electron heating scheme')
       endif
 !
 ! If calc_helium == 1 then calculate helium, otherwise zero out helium.
@@ -1949,6 +1970,8 @@
      |  ntimes_ctpoten,'ctpoten')
       call validate_timedep(power,power_time,mxind_time,
      |  ntimes_power,'power')
+      call validate_timedep(bximf,bximf_time,mxind_time,
+     |  ntimes_bximf,'bximf')
       call validate_timedep(byimf,byimf_time,mxind_time,
      |  ntimes_byimf,'byimf')
       call validate_timedep(bzimf,bzimf_time,mxind_time,

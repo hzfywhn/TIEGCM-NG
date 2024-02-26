@@ -58,7 +58,8 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,ui,vi,i_ng)
   subroutine aurora(latbeg,latend)
 
     use params_module,only: spval
-    use cons_module,only: pi,p0,grav,gask,rmassinv_o2,rmassinv_o1,rmassinv_n2,avo,dtr
+    use cons_module,only: pi,p0,grav,gask,avo,dtr, &
+      rmassinv_o2,rmassinv_o1,rmassinv_he,rmassinv_n2
     use input_module,only: iamie,saps,kp
     use magfield_module,only: sunlons
     use aurora_module,only: fac_p2e,alfad,fd,alfac,fc,add_sproton,alfa_sp, &
@@ -81,7 +82,7 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,ui,vi,i_ng)
       coslamda,halfwidth,dtheta,clat,falfa1,falfa2,fcusp,fdrizl,falfa_sp,falfa3, &
       aurbound,smlt,smlat,sndec,csdec,sui,svi,swi
     real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,latbeg:latend) :: &
-      tn,o2,o1,n2,barm,xnmbar,scht,xalfa1,xalfa2,xcusp,xdrizl,xalfa_sp,xalfa3, &
+      tn,o2,o1,he,n2,barm,xnmbar,scht,xalfa1,xalfa2,xcusp,xdrizl,xalfa_sp,xalfa3, &
       cusp_ion,drizl_ion,alfa1_ion,alfa2_ion,alfa3_ion,alfasp_bion, &
       barm_t,qsum,denom,p0ez_mbar,tk_mbar,qo2p_aur,qop_aur,qn2p_aur,qaurora, &
       falfa3_alfa3_ion,falfa_sp_alfasp_bion,qo2p_a,qop_a,qn2p_a
@@ -90,6 +91,7 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,ui,vi,i_ng)
     tn = flds(i_ng)%tn(:,:,latbeg:latend,itp(i_ng))
     o2 = flds(i_ng)%o2(:,:,latbeg:latend,itp(i_ng))
     o1 = flds(i_ng)%o1(:,:,latbeg:latend,itp(i_ng))
+    he = flds(i_ng)%he(:,:,latbeg:latend,itp(i_ng))
     n2 = flds(i_ng)%n2(:,:,latbeg:latend)
     barm = flds(i_ng)%barm(:,:,latbeg:latend,itp(i_ng))
     xnmbar = flds(i_ng)%xnmbar(:,:,latbeg:latend,itp(i_ng))
@@ -243,7 +245,7 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,ui,vi,i_ng)
     if (add_sproton) qsum = qsum+falfa_sp_alfasp_bion
     qsum = qsum*barm_t
 
-    denom = 0.92*n2*rmassinv_n2+1.5*o2*rmassinv_o2+0.56*o1*rmassinv_o1
+    denom = 1.5*o2*rmassinv_o2+0.56*o1*rmassinv_o1+0.43*he*rmassinv_he+1.15*n2*rmassinv_n2
     qo2p_aur = qsum*o2*rmassinv_o2/denom+qia(2)
     qop_aur = qsum*(0.5*o2*rmassinv_o2+0.56*o1*rmassinv_o1)/denom+qia(3)
     qn2p_aur = qsum*0.7*n2*rmassinv_n2/denom+qia(1)

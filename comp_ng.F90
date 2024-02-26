@@ -9,6 +9,7 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   use fields_ng_module,only: hor,flds,itp,shapiro,dtx2inv,dz,expzmid,expzmid_inv,expz,difk,bndry
   use lbc,only: b,fb,pshelb
   use char_module,only: find_index
+  use output_ng_module,only: addfld
   implicit none
 
   integer,intent(in) :: istep,i_ng
@@ -33,11 +34,13 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,3,2) :: ak
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     tn,o2,o2_nm,o1,o1_nm,he,he_nm,w,mbar,hdo2,hdo1,hdhe,xnmbar,n2,n2nm,normalize, &
-    o2nm_smooth,o1nm_smooth,henm_smooth,o2_advec,o1_advec,he_advec,wi
+    o2nm_smooth,o1nm_smooth,henm_smooth,o2_advec,o1_advec,he_advec,wi,eddyp,eddyq,eddyr
   real,dimension(0:nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     o2i,o1i,hei,embari,tni,dembardz,dtndz
-  real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3) :: zz,upd,diff_fac
-  real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,3) :: gama
+  real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3) :: &
+    zz,upd,diff_fac,moldif,eddydif,veradv
+  real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,3) :: &
+    gama,coefp,coefq,coefr
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,0:3) :: fs
   external :: advec_ng,smooth_ng
 
@@ -106,6 +109,13 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   call advec_ng(o2,o2_advec,i_ng)
   call advec_ng(o1,o1_advec,i_ng)
   call advec_ng(he,he_advec,i_ng)
+
+  call addfld(o2_advec,'O2_HORADV',i_ng)
+  call addfld(o1_advec,'O1_HORADV',i_ng)
+  call addfld(he_advec,'HE_HORADV',i_ng)
+  call addfld(hdo2,'O2_HORDIF',i_ng)
+  call addfld(hdo1,'O1_HORDIF',i_ng)
+  call addfld(hdhe,'HE_HORDIF',i_ng)
 
   call smooth_ng(o2_nm,o2nm_smooth,shapiro(i_ng),i_ng)
   call smooth_ng(o1_nm,o1nm_smooth,shapiro(i_ng),i_ng)
@@ -226,21 +236,38 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
     wks3 = wks4
     wks4 = dembardz(k,:,:)/(embari(k,:,:)*2.)
 
+    eddyp(k,:,:) = expzmid_inv(i_ng)*difk(i_ng,k,iday)*(1./dz(i_ng)-wks3)
+    eddyq(k,:,:) = &
+      expzmid    (i_ng)*difk(i_ng,k+1,iday)*(1./dz(i_ng)-wks4)+ &
+      expzmid_inv(i_ng)*difk(i_ng,k  ,iday)*(1./dz(i_ng)+wks3)
+    eddyr(k,:,:) = expzmid(i_ng)*difk(i_ng,k+1,iday)*(1./dz(i_ng)+wks4)
+
     do m = 1,3
       do isp = io2,ihe
-        ak(:,:,isp,m,kp) = ak(:,:,isp,m,kp)*wks1
+        ak(:,:,isp,m,kp) = -ak(:,:,isp,m,kp)*wks1
+      enddo
+    enddo
+
+    do isp = io2,ihe
+      coefp(k,:,:,isp,:) = -ak(:,:,isp,:,km)*(1./dz(i_ng)+ep(:,:,:,km)/2.)
+      coefq(k,:,:,isp,:) = &
+        ak(:,:,isp,:,km)*(1./dz(i_ng)-ep(:,:,:,km)/2.)+ &
+        ak(:,:,isp,:,kp)*(1./dz(i_ng)+ep(:,:,:,kp)/2.)
+      coefr(k,:,:,isp,:) = -ak(:,:,isp,:,kp)*(1./dz(i_ng)-ep(:,:,:,kp)/2.)
+    enddo
+
+    do m = 1,3
+      do isp = io2,ihe
         do lat = latd0,latd1
-          pk(:,lat,isp,m) = (ak(:,lat,isp,m,km)*(1./dz(i_ng)+ep(:,lat,m,km)/2.)- &
-            expz(i_ng,k)*(expzmid_inv(i_ng)*difk(i_ng,k,iday)*dfactor(lat)*(1./dz(i_ng)-wks3(:,lat))+.5*wi(k,:,lat))* &
-            delta(isp,m))/dz(i_ng)
-          rk(:,lat,isp,m) = (ak(:,lat,isp,m,kp)*(1./dz(i_ng)-ep(:,lat,m,kp)/2.)- &
-            expz(i_ng,k)*(expzmid(i_ng)*difk(i_ng,k+1,iday)*dfactor(lat)*(1./dz(i_ng)+wks4(:,lat))-.5*wi(k,:,lat))* &
-            delta(isp,m))/dz(i_ng)
-          qk(:,lat,isp,m) = -(ak(:,lat,isp,m,km)*(1./dz(i_ng)-ep(:,lat,m,km)/2.)+ &
-            ak(:,lat,isp,m,kp)*(1./dz(i_ng)+ep(:,lat,m,kp)/2.))/dz(i_ng)+ &
-            expz(i_ng,k)*(((expzmid(i_ng)*difk(i_ng,k+1,iday)*(1./dz(i_ng)-wks4(:,lat))+ &
-            expzmid_inv(i_ng)*difk(i_ng,k,iday)*(1./dz(i_ng)+wks3(:,lat)))* &
-            dfactor(lat)/dz(i_ng)+dtx2inv(i_ng))*delta(isp,m)-fs(k,:,lat,isp,m))
+          pk(:,lat,isp,m) = -coefp(k,:,lat,isp,m)/dz(i_ng)- &
+            expz(i_ng,k)*delta(isp,m)/dz(i_ng)* &
+            (eddyp(k,:,lat)*dfactor(lat)+.5*wi(k,:,lat))
+          rk(:,lat,isp,m) = -coefr(k,:,lat,isp,m)/dz(i_ng)- &
+            expz(i_ng,k)*delta(isp,m)/dz(i_ng)* &
+            (eddyr(k,:,lat)*dfactor(lat)-.5*wi(k,:,lat))
+          qk(:,lat,isp,m) = -coefq(k,:,lat,isp,m)/dz(i_ng)+ &
+            expz(i_ng,k)*delta(isp,m)*(eddyq(k,:,lat)*dfactor(lat)/dz(i_ng)+dtx2inv(i_ng))- &
+            expz(i_ng,k)*fs(k,:,lat,isp,m)
         enddo
       enddo
     enddo
@@ -349,6 +376,39 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   enddo
   upd(nk,:,:,io1) = upd(nk,:,:,io1)+(alpha23-alpha22)*flx_he/(flx00*(1./dz(i_ng)-0.5*ep(:,:,io1,kp)))
   upd(nk,:,:,ihe) = upd(nk,:,:,ihe)+(alpha33-alpha32)*flx_he/(flx00*(1./dz(i_ng)-0.5*ep(:,:,ihe,kp)))
+
+  moldif = 0.
+  eddydif = 0.
+  veradv = 0.
+  do k = 2,nk-1
+    do isp = io2,ihe
+      do m = 1,3
+        moldif(k,:,:,isp) = moldif(k,:,:,isp)+ &
+          coefp(k,:,:,isp,m)*upd(k-1,:,:,m)+ &
+          coefq(k,:,:,isp,m)*upd(k  ,:,:,m)+ &
+          coefr(k,:,:,isp,m)*upd(k+1,:,:,m)
+      enddo
+      eddydif(k,:,:,isp) = &
+        eddyp(k,:,:)*upd(k-1,:,:,isp)+ &
+        eddyq(k,:,:)*upd(k  ,:,:,isp)+ &
+        eddyr(k,:,:)*upd(k+1,:,:,isp)
+      veradv(k,:,:,isp) = wi(k,:,:)*(upd(k-1,:,:,isp)-upd(k+1,:,:,isp))
+    enddo
+    moldif(k,:,:,:) = moldif(k,:,:,:)/dz(i_ng)/expz(i_ng,k)
+    do lat = latd0,latd1
+      eddydif(k,:,lat,:) = eddydif(k,:,lat,:)*dfactor(lat)/expz(i_ng,k)
+    enddo
+    veradv(k,:,:,:) = veradv(k,:,:,:)/(2*dz(i_ng))
+  enddo
+  call addfld(moldif(:,:,:,io2),'O2_MOLDIF',i_ng)
+  call addfld(moldif(:,:,:,io1),'O1_MOLDIF',i_ng)
+  call addfld(moldif(:,:,:,ihe),'HE_MOLDIF',i_ng)
+  call addfld(eddydif(:,:,:,io2),'O2_EDDYDIF',i_ng)
+  call addfld(eddydif(:,:,:,io1),'O1_EDDYDIF',i_ng)
+  call addfld(eddydif(:,:,:,ihe),'HE_EDDYDIF',i_ng)
+  call addfld(veradv(:,:,:,io2),'O2_VERADV',i_ng)
+  call addfld(veradv(:,:,:,io1),'O1_VERADV',i_ng)
+  call addfld(veradv(:,:,:,ihe),'HE_VERADV',i_ng)
 
   o2_upd = upd(:,:,:,io2)
   o1_upd = upd(:,:,:,io1)

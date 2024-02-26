@@ -2,7 +2,7 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
 
   use params_module,only: nlevp1_ng
   use cons_module,only: pi,rtd,evergs,rmassinv_o2,rmassinv_o1,rmassinv_n2,avo
-  use input_module,only: f107,et
+  use input_module,only: f107,et,electron_heating
   use fields_ng_module,only: flds,itp,dipmin,dz
   implicit none
 
@@ -16,15 +16,16 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     chi,rlatm,dipmag,qteaur,a,fed,fen,fe,sindipmag
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    tn,o2,o1,n2,ne,te,ti,op,o2p,nop,xnmbar,xnmbari,scht,schti,qji_ti,qop2p,qop2d,qo2p,qop,qn2p,qnp,qnop, &
-    te_int,tn_int,o2n,o1n,n2n,root_te,root_tn,root_ne,tek0,h_mid,h_int,p_coef,q_coef,r_coef,rhs, &
-    qtot,qe,q_eni,coll_en2v,loss_en2v,loss_en2,loss_eo2,loss_eo1d,loss_eo1,loss_xen,loss_en,loss_ei,loss_in, &
-    tek0_h_int,tek0_h_int_1,q_eni_i,Qa,Q2
+    tn,o2,o1,he,n2,ne,te,ti,op,o2p,nop,xnmbar,xnmbari,scht,schti,qji_ti,qop2p,qop2d,qo2p,qop,qn2p,qnp,qnop, &
+    te_int,tn_int,o2n,o1n,hen,n2n,root_te,root_tn,root_ne,tek0,h_mid,h_int,p_coef,q_coef,r_coef,rhs, &
+    qtot,qe,q_eni,coll_en2v,loss_en2v,loss_eo2,loss_eo1d,loss_eo1,loss_ehe,loss_en2,loss_en,loss_xen, &
+    loss_ei,loss_in,tek0_h_int,tek0_h_int_1,q_eni_i,Qa,Q2
   external :: trsolv_ng
 
   tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
   o2 = flds(i_ng)%o2(:,:,:,itp(i_ng))
   o1 = flds(i_ng)%o1(:,:,:,itp(i_ng))
+  he = flds(i_ng)%he(:,:,:,itp(i_ng))
   n2 = flds(i_ng)%n2
   ne = flds(i_ng)%ne(:,:,:,itp(i_ng))
   te = flds(i_ng)%te(:,:,:,itp(i_ng))
@@ -84,6 +85,7 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
     te_int(k,:,:) = .5*(te(k,:,:)+te(k-1,:,:))
     o2n(k,:,:) = .5*(o2(k,:,:)+o2(k-1,:,:))
     o1n(k,:,:) = .5*(o1(k,:,:)+o1(k-1,:,:))
+    hen(k,:,:) = .5*(he(k,:,:)+he(k-1,:,:))
     n2n(k,:,:) = .5*(n2(k,:,:)+n2(k-1,:,:))
     tn_int(k,:,:) = .5*(tn(k,:,:)+tn(k-1,:,:))
   enddo
@@ -91,12 +93,14 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
   te_int(1,:,:) = 1.5*te(1,:,:)-.5*te(2,:,:)
   o2n(1,:,:) = 1.5*o2(1,:,:)-.5*o2(2,:,:)
   o1n(1,:,:) = 1.5*o1(1,:,:)-.5*o1(2,:,:)
+  hen(1,:,:) = 1.5*he(1,:,:)-.5*he(2,:,:)
   n2n(1,:,:) = 1.5*n2(1,:,:)-.5*n2(2,:,:)
   tn_int(1,:,:) = 1.5*tn(1,:,:)-.5*tn(2,:,:)
 
   te_int(nk,:,:) = 1.5*te(nk-1,:,:)-.5*te(nk-2,:,:)
   o2n(nk,:,:) = 1.5*o2(nk-1,:,:)-.5*o2(nk-2,:,:)
   o1n(nk,:,:) = 1.5*o1(nk-1,:,:)-.5*o1(nk-2,:,:)
+  hen(nk,:,:) = 1.5*he(nk-1,:,:)-.5*he(nk-2,:,:)
   n2n(nk,:,:) = 1.5*n2(nk-1,:,:)-.5*n2(nk-2,:,:)
   tn_int(nk,:,:) = 1.5*tn(nk-1,:,:)-.5*tn(nk-2,:,:)
 
@@ -104,11 +108,16 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
 
   o2n = xnmbari*o2n*rmassinv_o2
   o1n = xnmbari*o1n*rmassinv_o1
+  hen = xnmbari*hen*rmassinv_o1
   n2n = xnmbari*n2n*rmassinv_n2
 
   root_te = sqrt(te_int)
-  tek0 = 7.5e5/(1.+3.22e4*te_int**2/ne*(root_te*(2.82e-17-3.41e-21*te_int)*n2n+ &
-    (2.20e-16+7.92e-18*root_te)*o2n+1.10e-16*(1.+5.7e-4*te_int)*o1n))*evergs
+  tek0 = 7.5e5/(1.+3.22e4*te_int**2/ne* &
+    ((2.20e-16+7.92e-18*sqrt(te_int))*o2n+ &
+    1.10e-16*(1.+5.7e-4*te_int)*o1n+ &
+    5.60e-16*hen+ &
+    (2.82e-17*sqrt(te_int)-3.41e-21*sqrt(te_int**3))*n2n))* &
+    evergs
 
   h_mid = scht
   h_int = schti
@@ -154,12 +163,16 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
 
   o2n = xnmbar*o2*rmassinv_o2
   o1n = xnmbar*o1*rmassinv_o1
+  hen = xnmbar*he*rmassinv_o1
   n2n = xnmbar*n2*rmassinv_n2
 
-!  qe = log(root_ne/(o2n+n2n+0.1*o1n))
-!  qe = exp(-((((0.001996*qe+0.08034)*qe+1.166)*qe+6.941)*qe+12.75))
-  qe = log(root_ne/(o2n+n2n+o1n))
-  qe = exp(-((((((0.00001249*qe+0.0005755)*qe+0.009346)*qe+0.059)*qe+0.04392)*qe-1.056)*qe-5.342))
+  if (electron_heating == 6) then
+    qe = log(root_ne/(o2n+n2n+o1n))
+    qe = exp(((((((-1.249e-5*qe-5.755e-4)*qe-9.346e-3)*qe-5.900e-2)*qe-4.392e-2)*qe+1.056)*qe+5.342))
+  else
+    qe = log(root_ne/(o2n+n2n+0.1*o1n))
+    qe = exp(-((((0.001996*qe+0.08034)*qe+1.166)*qe+6.941)*qe+12.75))
+  endif
 
   rhs = rhs-qe*qtot*evergs
 
@@ -179,15 +192,7 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
   loss_en2v = -3200./(te*tn)*(1.-exp(loss_en2v))/loss_en2v
   loss_en2v = 1.3e-4*loss_en2v*coll_en2v
 
-  loss_en2 = n2n*(1.77E-19*(1.-1.21E-4*te)*te+2.9e-14/root_te+loss_en2v)
-  loss_en = loss_en2
-
-  if (et) then
-    where (te>500.0 .and. Q2>0.0) loss_en = loss_en*exp(-7.54E-4*(te-500.0))
-  endif
-
   loss_eo2 = o2n*(1.21e-18*(1.+3.6e-2*root_te)*root_te+6.9e-14/root_te+3.125e-21*te**2)
-  loss_en = loss_en+loss_eo2
 
 ! loss_eo1d = 22713.*(1./te-1./tn)
 ! loss_eo1d = sign(abs(loss_eo1d)+del,loss_eo1d)
@@ -196,7 +201,15 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
 
   loss_eo1 = o1n*(7.9e-19*(1.+5.7e-4*te)*root_te+3.4e-12*(1.-7.e-5*te)/tn*(150./te+0.4))
 
-  loss_en = loss_en+loss_eo1
+  loss_ehe = hen*2.46e-17*root_te
+
+  loss_en2 = n2n*(1.77E-19*(1.-1.21E-4*te)*te+2.9e-14/root_te+loss_en2v)
+
+  loss_en = loss_eo2+loss_eo1+loss_ehe+loss_en2
+
+  if (et) then
+    where (te>500.0 .and. Q2>0.0) loss_en = loss_en*exp(-7.54E-4*(te-500.0))
+  endif
 
   loss_xen = (loss_en+o1n*(1.-alam/(ad+sd*n2n))*loss_eo1d)*root_ne*evergs
 
@@ -206,9 +219,9 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
 
   root_tn = sqrt(tn)
 
-  loss_in = ((6.6e-14*n2n+5.8e-14*o2n+0.21e-14*o1n*sqrt(2.)*root_tn)*op+ &
-    (5.45e-14*o2n+5.9e-14*n2n+4.5e-14*o1n)*nop+ &
-    (5.8e-14*n2n+4.4e-14*o1n+0.14e-14*o2n*root_tn)*o2p)*evergs
+  loss_in = ((5.8*o2n+0.21*o1n*sqrt(2.)*root_tn+2.8*hen+6.6*n2n)*op+ &
+    (5.45*o2n+4.5*o1n+5.9*n2n)*nop+ &
+    (0.14*o2n*sqrt(2.)*root_tn+4.4*o1n+5.8*n2n)*o2p)*1e-14*evergs
 
   q_coef = q_coef-(loss_en+loss_ei)/te**2.5
 

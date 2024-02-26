@@ -4,6 +4,7 @@ subroutine dynamics_ng(istep,i_ng)
   use params_module,only: nlevp1_ng
   use input_module,only: nstep_sub,aurora
   use fields_ng_module,only: flds,itp,itc
+  use output_ng_module,only: addfld
   implicit none
 
   integer,intent(in) :: istep,i_ng
@@ -126,6 +127,10 @@ subroutine dynamics_ng(istep,i_ng)
     flds(i_ng)%o2p(:,:,:,itc(i_ng)), &
     flds(i_ng)%ne(:,:,:,itc(i_ng)), &
     i_ng)
+
+  call addfld(flds(i_ng)%nplus,'NP_diag',i_ng)
+  call addfld(flds(i_ng)%n2p,'N2P_diag',i_ng)
+  call addfld(flds(i_ng)%nop,'NOP_diag',i_ng)
 
   call lamdas_ng( &
     flds(i_ng)%lxx, &
