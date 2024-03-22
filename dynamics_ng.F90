@@ -146,7 +146,8 @@ subroutine dynamics_ng(istep,i_ng)
 
   call comp_n2d_ng( &
     flds(i_ng)%n2d(:,:,:,itc(i_ng)), &
-    i_ng)
+    flds(i_ng)%n2d_nm(:,:,:,itc(i_ng)), &
+    istep,i_ng)
 
   call comp_n4s_ng( &
     flds(i_ng)%n4s(:,:,:,itc(i_ng)), &

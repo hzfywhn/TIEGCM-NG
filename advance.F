@@ -24,7 +24,8 @@
      |  calendar_advance,gpi_ncfile,potential_model,wei05sc_ncfile,
      |  imf_ncfile,current_pg,current_kq,iamie,amie_ibkg,
      |  start_day,nesting,dlev_ng,dlat_ng,dlon_ng,glat0_ng,glat1_ng,
-     |  glon0_ng,glon1_ng,nudge_level,nudge_lbc,nudge_f4d,nudge_alpha
+     |  glon0_ng,glon1_ng,nudge_level,nudge_lbc,nudge_f4d,nudge_alpha,
+     |  doEclipse,eclipse_list
       use input_module,only: 
      |  power  ,power_time  ,ntimes_power, rd_power,
      |  ctpoten,ctpoten_time,ntimes_ctpoten, rd_ctpoten,
@@ -44,7 +45,7 @@
       use pdynamo_module,only: pefield
       use aurora_module,only: aurora_cons
       use hdif_module,only: hdif1,hdif2
-      use current,only: noso_crrt,noso_crdens
+      use current,only: noso_crrt,noso_crdens,nscrrt_glb=>nscrrt
       use timing_module,only: timer,timing
       use mpitime_module,only: mpi_timer
       use gpi_module,only: rdgpi,getgpi
@@ -57,6 +58,7 @@
       use output,only: outhist,output_hist
       use addfld_module,only: addfld
       use lbc,only: tuvz_lbc,t_lbc,u_lbc,v_lbc,z_lbc
+      use eclipse_module,only: read_eclipse_list,find_eclipse
       use fields_ng_module,only:
      |  modeltime_ng=>modeltime,init_ng,alloc_fields
       use level_outer_ng_module,only: init_mapping_1=>init_mapping
@@ -74,6 +76,7 @@
 ! Routines and timing for parallel dynamo (pdynamo.F):
       use pdynamo_module,only: dynamo_inputs,pdynamo,pefield,
      |  prepare_phig3d,nmlat0,phihm 
+      use diags_module,only: mkdiag_JQR
 
       use mage_coupling_module,only: import_mage, export_mage,
      |  process_import
@@ -84,6 +87,7 @@
 !
       use mpi_module,only: 
      |  mytid,mp_bndlats,ntask,lat0,lat1,lon0,lon1,
+     |  mlat0,mlat1,mlon0,mlon1,mp_scatter_phim,
      |  mp_bndlons,mp_polelats,mp_periodic_f4d,TIEGCM_WORLD
       use getapex_module,only: apxparm
 !
@@ -93,8 +97,9 @@
 #endif
 !
 ! Local:
-      integer :: i,j,itmp,ier,iprint,modelsec,ifld,i_ng,maxlev,k,
-     |  latbeg,latend,lonbeg,lonend,offbeg,offend,lonbeg1,lonend1
+      integer :: i,j,itmp,ier,iprint,month,day,modelsec,ifld,i_ng,
+     |  maxlev,k,latbeg,latend,lonbeg,lonend,offbeg,offend,
+     |  lonbeg1,lonend1
       integer :: cmodeltime(4) !MAGE coupling time
       real :: fmin,fmax,delta,fac1,fac2
       integer(kind=8) :: nsecs ! current model time in seconds,
@@ -112,6 +117,7 @@
      |  time0_init,     time1_init
       character(len=3) :: timing_type
       logical :: adv
+      real,dimension(mlon0:mlon1,mlat0:mlat1) :: nscrrt
       real,dimension(:,:),allocatable :: wt,ext_fld,tmp_lbc
       real,dimension(:,:,:),allocatable :: tmp_f4d,nclbc
       real,dimension(:,:,:,:),allocatable :: ncf4d
@@ -183,6 +189,9 @@
       itmp = itp
       itp = itc
       itc = itmp
+!
+! Initialize eclipse list with external data
+      if (doEclipse) call read_eclipse_list(eclipse_list)
 !
 ! glon0 corresponds to lon0:lon1 (1,nlonp4)
       glon0(3:nlonp2) = glon
@@ -381,6 +390,12 @@
 ! Update lower boundaries of t,u,v,z:
 !
       call tuvz_lbc(istep,iday,secs)
+!
+! Update eclipse elements array if necessary:
+      if (doEclipse) then
+        call to_month_day(iyear,iday,month,day)
+        call find_eclipse(iyear,month,day)
+      endif
 !
       modelsec = mtime_to_secs(modeltime)-start_day*86400
 
@@ -730,6 +745,11 @@
 !
         if (current_kq > 0) then
           if (mytid==0) call noso_crrt
+!
+! Save JQR: Upward current density (2d)
+!
+          call mp_scatter_phim(nscrrt_glb,nscrrt)
+          call mkdiag_JQR('JQR',nscrrt,mlon0,mlon1,mlat0,mlat1)
           call noso_crdens
         endif
 !

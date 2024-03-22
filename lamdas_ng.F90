@@ -74,9 +74,9 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
   he_cm3 = he*xnmbar*rmassinv_he
   n2_cm3 = n2*xnmbar*rmassinv_n2
 
-  rnu_o2p = rnu_o2p_o2*o2_cm3+rnu_o2p_o*o1_cm3+rnu_o2p_he*he_cm3*rnu_o2p_n2*n2_cm3
-  rnu_op = rnu_op_o2*o2_cm3+rnu_op_o*o1_cm3+rnu_op_he*he_cm3*rnu_op_n2*n2_cm3
-  rnu_nop = rnu_nop_o2*o2_cm3+rnu_nop_o*o1_cm3+rnu_nop_he*he_cm3*rnu_nop_n2*n2_cm3
+  rnu_o2p = rnu_o2p_o2*o2_cm3+rnu_o2p_o*o1_cm3+rnu_o2p_he*he_cm3+rnu_o2p_n2*n2_cm3
+  rnu_op = rnu_op_o2*o2_cm3+rnu_op_o*o1_cm3+rnu_op_he*he_cm3+rnu_op_n2*n2_cm3
+  rnu_nop = rnu_nop_o2*o2_cm3+rnu_nop_o*o1_cm3+rnu_nop_he*he_cm3+rnu_nop_n2*n2_cm3
   sqrt_te = sqrt(te)
   rnu_ne = 1.82e-10*o2_cm3*sqrt_te*(1.+3.60e-2*sqrt_te)+ &
     8.90e-11*o1_cm3*sqrt_te*(1.+5.70e-4*te)+ &

@@ -1,7 +1,7 @@
 subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
 
   use params_module,only: nlevp1_ng
-  use cons_module,only: pi,rtd,evergs,rmassinv_o2,rmassinv_o1,rmassinv_n2,avo
+  use cons_module,only: pi,rtd,evergs,rmassinv_o2,rmassinv_o1,rmassinv_he,rmassinv_n2,avo
   use input_module,only: f107,et,electron_heating
   use fields_ng_module,only: flds,itp,dipmin,dz
   implicit none
@@ -108,7 +108,7 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
 
   o2n = xnmbari*o2n*rmassinv_o2
   o1n = xnmbari*o1n*rmassinv_o1
-  hen = xnmbari*hen*rmassinv_o1
+  hen = xnmbari*hen*rmassinv_he
   n2n = xnmbari*n2n*rmassinv_n2
 
   root_te = sqrt(te_int)
@@ -163,7 +163,7 @@ subroutine settei_ng(te_out,ti_out,qtotal,i_ng)
 
   o2n = xnmbar*o2*rmassinv_o2
   o1n = xnmbar*o1*rmassinv_o1
-  hen = xnmbar*he*rmassinv_o1
+  hen = xnmbar*he*rmassinv_he
   n2n = xnmbar*n2*rmassinv_n2
 
   if (electron_heating == 6) then

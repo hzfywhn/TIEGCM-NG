@@ -10,7 +10,7 @@ subroutine comp_ar_ng(ar_out,arnm_out,istep,i_ng)
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(out) :: ar_out,arnm_out
 
   real,parameter :: alfa_ar = 0.17
-  real,dimension(3),parameter :: phi_ar = (/1.042,1.509,1.176/)
+  real,dimension(4),parameter :: phi_ar = (/1.042,1.509,0.732,1.176/)
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: ar_ubc
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3) :: ar_lbc
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: ar,ar_nm,ar_prod,ar_loss

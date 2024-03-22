@@ -2,10 +2,11 @@ subroutine minor_ng(fcomp,fcomp_tm1,fcomp_out,fcomp_tm1_out,sloss,sprod,flbc,fub
 
   use params_module,only: nlevp1_ng,nlon_ng,nlat_ng,glat_ng
   use cons_module,only: rmassinv_o2,rmassinv_o1,rmassinv_n2,p0,rmass_o2,rmass_o1,rmass_n2, &
-    dtr,pi,grav,avo,dtsmooth,dtsmooth_div2,difhor,rmassinv_he
+    dtr,pi,grav,avo,dtsmooth,dtsmooth_div2,difhor,rmass_he,rmassinv_he
   use init_module,only: iday
   use lbc,only: b,fb
   use fields_ng_module,only: hor,flds,itp,itc,shapiro,dtx2inv,dzp,expzmid_inv,expzmid,expz,difk,bndry
+  use matutil_module,only: matinv3
   use char_module,only: find_index
   implicit none
 
@@ -17,20 +18,23 @@ subroutine minor_ng(fcomp,fcomp_tm1,fcomp_out,fcomp_tm1_out,sloss,sprod,flbc,fub
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3),intent(in) :: flbc
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(in) :: fubc
   real,intent(in) :: rmx,alfax
-  real,dimension(3),intent(in) :: phix
+  real,dimension(4),intent(in) :: phix
   character(len=*),intent(in) :: name
 
   real,parameter :: small = 1.e-12, tau = 1.86e+3, t00 = 273.
-  real,dimension(2,3),parameter :: phi = reshape((/0.,1.35,1.11,0.673,0.,0.769/),(/2,3/),order=(/2,1/))
-  real,parameter :: salfa12 = phi(1,2)-phi(1,3), salfa21 = phi(2,1)-phi(2,3)
-  integer :: nk,latd0,latd1,k,lat,idx_minor
-  real :: salfax1,salfax2
+  real,dimension(3),parameter :: ss = (/1.710,1.749,1.718/)
+  real,dimension(3,4),parameter :: &
+    phi = reshape((/0.,0.673,0.270,1.35,0.,0.404,2.16,1.616,0.,1.11,0.769,0.322/),(/3,4/))
+  integer :: nk,lond0,lond1,latd0,latd1,k,i,lat,n,idx_minor
   logical,dimension(4) :: is_bndry
+  real,dimension(3) :: diff_fac,salfax
+  real,dimension(3,3) :: alfa,invalfa
   real,dimension(flds(i_ng)%latd0:flds(i_ng)%latd1) :: rlat,dfactor
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: tlbc,xmbari,bo2,bo1,bhe
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    tn,o2,o1,he,mbar,barm,xnmbar,w,hadvec,do2dz,do1dz,pso2,pso1,dmdz,xmbar_k,tni,s0prod, &
-    alfa11,alfa12,alfa21,alfa22,ex,ax,thdiff,p_coef,q_coef,r_coef,f_rhs,ftm1_smooth,wi,dtnidz
+    tn,o2,o1,he,mbar,barm,xnmbar,w,hadvec,do2dz,do1dz,dhedz,pso2,pso1,pshe,dmdz, &
+    tni,s0prod,ex,ax,thdiff,p_coef,q_coef,r_coef,f_rhs,ftm1_smooth,wi,dtnidz
+  real,dimension(3,nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: salfaxinvalfa
   external :: smooth_ng,advec_ng,trsolv_ng
 
   tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
@@ -45,12 +49,13 @@ subroutine minor_ng(fcomp,fcomp_tm1,fcomp_out,fcomp_tm1_out,sloss,sprod,flbc,fub
   tlbc = flds(i_ng)%tlbc
 
   nk = nlevp1_ng(i_ng)
+  lond0 = flds(i_ng)%lond0
+  lond1 = flds(i_ng)%lond1
   latd0 = flds(i_ng)%latd0
   latd1 = flds(i_ng)%latd1
   is_bndry = flds(i_ng)%is_bndry
 
-  salfax1 = phix(1)-phix(3)
-  salfax2 = phix(2)-phix(3)
+  salfax = phix(1:3)-phix(4)
 
   call smooth_ng(fcomp_tm1,ftm1_smooth,shapiro(i_ng),i_ng)
 
@@ -61,21 +66,22 @@ subroutine minor_ng(fcomp,fcomp_tm1,fcomp_out,fcomp_tm1_out,sloss,sprod,flbc,fub
   bhe = b(3,1)*o2(1,:,:)+b(3,2)*o1(1,:,:)+b(3,3)*he(1,:,:)+fb(3)
   xmbari = 1./(bo2*rmassinv_o2+bo1*rmassinv_o1+(1.-bo2-bo1-bhe)*rmassinv_n2+bhe*rmassinv_he)
 
-  xmbar_k = barm
-  xmbar_k(1,:,:) = .5*(xmbari+mbar(1,:,:))
-
   dmdz(1,:,:) = (mbar(1,:,:)-xmbari)/dzp(i_ng)
   pso1(1,:,:) = .5*(bo1+o1(1,:,:))
   pso2(1,:,:) = .5*(bo2+o2(1,:,:))
+  pshe(1,:,:) = .5*(bhe+he(1,:,:))
   do1dz(1,:,:) = (o1(1,:,:)-bo1)/dzp(i_ng)
   do2dz(1,:,:) = (o2(1,:,:)-bo2)/dzp(i_ng)
+  dhedz(1,:,:) = (he(1,:,:)-bhe)/dzp(i_ng)
 
   do k = 2,nk
     dmdz(k,:,:) = (mbar(k,:,:)-mbar(k-1,:,:))/dzp(i_ng)
     pso1(k,:,:) = .5*(o1(k,:,:)+o1(k-1,:,:))
     pso2(k,:,:) = .5*(o2(k,:,:)+o2(k-1,:,:))
+    pshe(k,:,:) = .5*(he(k,:,:)+he(k-1,:,:))
     do1dz(k,:,:) = (o1(k,:,:)-o1(k-1,:,:))/dzp(i_ng)
     do2dz(k,:,:) = (o2(k,:,:)-o2(k-1,:,:))/dzp(i_ng)
+    dhedz(k,:,:) = (he(k,:,:)-he(k-1,:,:))/dzp(i_ng)
   enddo
 
   tni(1,:,:) = tlbc
@@ -86,18 +92,46 @@ subroutine minor_ng(fcomp,fcomp_tm1,fcomp_out,fcomp_tm1_out,sloss,sprod,flbc,fub
 
   s0prod = sprod*rmx/xnmbar
 
-  alfa11 = -(phi(1,3)+salfa12*pso1)
-  alfa12 = salfa12*pso2
-  alfa21 = salfa21*pso1
-  alfa22 = -(phi(2,3)+salfa21*pso2)
+  do lat = latd0,latd1
+    do i = lond0,lond1
+      do k = 1,nk
+        do n = 1,3
+          diff_fac(n) = (tni(k,i,lat)/t00)**(1.75-ss(n))
+        enddo
 
-  ex = ((salfax1*alfa22-salfax2*alfa21)*(do2dz-(1.-(rmass_o2+dmdz)/xmbar_k)*pso2)+ &
-    (salfax2*alfa11-salfax1*alfa12)*(do1dz-(1.-(rmass_o1+dmdz)/xmbar_k)*pso1))/ &
-    (alfa11*alfa22-alfa12*alfa21)+1.-(rmx+dmdz)/xmbar_k
+        alfa(1,1) = -(phi(1,4)+ &
+          (phi(1,2)-phi(1,4))*pso1(k,i,lat)+ &
+          (diff_fac(1)*phi(1,3)-phi(1,4))*pshe(k,i,lat))
+        alfa(2,2) = -(phi(2,4)+ &
+          (phi(2,1)-phi(2,4))*pso2(k,i,lat)+ &
+          (diff_fac(2)*phi(2,3)-phi(2,4))*pshe(k,i,lat))
+        alfa(3,3) = -(diff_fac(3)*phi(3,4)+ &
+          (diff_fac(1)*phi(3,1)-diff_fac(3)*phi(3,4))*pso2(k,i,lat)+ &
+          (diff_fac(2)*phi(3,2)-diff_fac(3)*phi(3,4))*pso1(k,i,lat))
+        alfa(1,2) = (phi(1,2)-phi(1,4))*pso2(k,i,lat)
+        alfa(1,3) = (diff_fac(1)*phi(1,3)-phi(1,4))*pso2(k,i,lat)
+        alfa(2,1) = (phi(2,1)-phi(2,4))*pso1(k,i,lat)
+        alfa(2,3) = (diff_fac(2)*phi(2,3)-phi(2,4))*pso1(k,i,lat)
+        alfa(3,1) = (diff_fac(1)*phi(3,1)-diff_fac(3)*phi(3,4))*pshe(k,i,lat)
+        alfa(3,2) = (diff_fac(2)*phi(3,2)-diff_fac(3)*phi(3,4))*pshe(k,i,lat)
 
-  dmdz = dmdz/xmbar_k
+        invalfa = matinv3(alfa)
+        do n = 1,3
+          salfaxinvalfa(n,k,i,lat) = dot_product(salfax,invalfa(:,n))
+        enddo
+      enddo
+    enddo
+  enddo
 
-  ax = -xmbar_k/(tau*rmass_n2)*(t00/tni)**0.25/(phix(3)+salfax1*pso2+salfax2*pso1)
+  ex = 1.-(rmx+dmdz)/barm+ &
+    salfaxinvalfa(1,:,:,:)*(do2dz-(1.-(rmass_o2+dmdz)/barm)*pso2)+ &
+    salfaxinvalfa(2,:,:,:)*(do1dz-(1.-(rmass_o1+dmdz)/barm)*pso1)+ &
+    salfaxinvalfa(3,:,:,:)*(dhedz-(1.-(rmass_he+dmdz)/barm)*pshe)
+
+  dmdz = dmdz/barm
+
+  ax = -barm/(tau*rmass_n2)*(t00/tni)**0.25/ &
+    (phix(3)+salfax(1)*pso2+salfax(2)*pso1+salfax(3)*pshe)
 
   do k = 2,nk-1
     dtnidz(k,:,:) = (tni(k+1,:,:)-tni(k-1,:,:))/2.

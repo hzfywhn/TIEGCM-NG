@@ -8,6 +8,7 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   use input_module,only: calc_helium
   use fields_ng_module,only: hor,flds,itp,shapiro,dtx2inv,dz,expzmid,expzmid_inv,expz,difk,bndry
   use lbc,only: b,fb,pshelb
+  use matutil_module,only: matinv3
   use char_module,only: find_index
   use output_ng_module,only: addfld
   implicit none
@@ -27,16 +28,15 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   logical,dimension(4) :: is_bndry
   real,dimension(flds(i_ng)%latd0:flds(i_ng)%latd1) :: dfactor,rlat
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    tlbc,wks1,wks3,wks4,embar0,detalpha,alpha23,alpha22,alpha33,alpha32,flx00
+    tlbc,wks1,wks3,wks4,embar0,alpha23,alpha22,alpha33,alpha32,flx00
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3) :: fk,wkv1,ps0
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,2) :: ep
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,3) :: pk,qk,rk,wkm1,alpha
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,3,2) :: ak
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     tn,o2,o2_nm,o1,o1_nm,he,he_nm,w,mbar,hdo2,hdo1,hdhe,xnmbar,n2,n2nm,normalize, &
-    o2nm_smooth,o1nm_smooth,henm_smooth,o2_advec,o1_advec,he_advec,wi,eddyp,eddyq,eddyr
-  real,dimension(0:nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    o2i,o1i,hei,embari,tni,dembardz,dtndz
+    o2nm_smooth,o1nm_smooth,henm_smooth,o2_advec,o1_advec,he_advec, &
+    o2i,o1i,hei,embari,tni,dembardz,dtndz,wi,eddyp,eddyq,eddyr
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3) :: &
     zz,upd,diff_fac,moldif,eddydif,veradv
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1,3,3) :: &
@@ -77,33 +77,29 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   embar0 = 1./(ps0(:,:,io2)*rmassinv_o2+ps0(:,:,io1)*rmassinv_o1+ps0(:,:,ihe)*rmassinv_he+ &
     (1.-ps0(:,:,io2)-ps0(:,:,io1)-ps0(:,:,ihe))*rmassinv_n2)
 
-  o2i(0,:,:) = .5*(ps0(:,:,io2)+o2(1,:,:))
-  o1i(0,:,:) = .5*(ps0(:,:,io1)+o1(1,:,:))
-  hei(0,:,:) = .5*(ps0(:,:,ihe)+he(1,:,:))
-  embari(0,:,:) = .5*(embar0+mbar(1,:,:))
-  tni(0,:,:) = .5*(tlbc+tn(1,:,:))
-  dembardz(0,:,:) = mbar(1,:,:)-embar0
-  dtndz(0,:,:) = tn(1,:,:)-tlbc
-  do k = 1,nk-1
-    o2i(k,:,:) = .5*(o2(k,:,:)+o2(k+1,:,:))
-    o1i(k,:,:) = .5*(o1(k,:,:)+o1(k+1,:,:))
-    hei(k,:,:) = .5*(he(k,:,:)+he(k+1,:,:))
-    embari(k,:,:) = .5*(mbar(k,:,:)+mbar(k+1,:,:))
-    tni(k,:,:) = .5*(tn(k,:,:)+tn(k+1,:,:))
-    wi(k,:,:) = .5*(w(k,:,:)+w(k+1,:,:))
-    dembardz(k,:,:) = mbar(k+1,:,:)-mbar(k,:,:)
-    dtndz(k,:,:) = tn(k+1,:,:)-tn(k,:,:)
+  o2i(1,:,:) = .5*(ps0(:,:,io2)+o2(1,:,:))
+  o1i(1,:,:) = .5*(ps0(:,:,io1)+o1(1,:,:))
+  hei(1,:,:) = .5*(ps0(:,:,ihe)+he(1,:,:))
+  embari(1,:,:) = .5*(embar0+mbar(1,:,:))
+  tni(1,:,:) = tlbc
+  dembardz(1,:,:) = mbar(1,:,:)-embar0
+  dtndz(1,:,:) = (tn(1,:,:)-tlbc)*2
+  do k = 2,nk
+    o2i(k,:,:) = .5*(o2(k-1,:,:)+o2(k,:,:))
+    o1i(k,:,:) = .5*(o1(k-1,:,:)+o1(k,:,:))
+    hei(k,:,:) = .5*(he(k-1,:,:)+he(k,:,:))
+    embari(k,:,:) = .5*(mbar(k-1,:,:)+mbar(k,:,:))
+    tni(k,:,:) = .5*(tn(k-1,:,:)+tn(k,:,:))
+    dembardz(k,:,:) = mbar(k,:,:)-mbar(k-1,:,:)
+    dtndz(k,:,:) = tn(k,:,:)-tn(k-1,:,:)
   enddo
-  o2i(nk,:,:) = 1.5*o2(nk,:,:)-.5*o2(nk-1,:,:)
-  o1i(nk,:,:) = 1.5*o1(nk,:,:)-.5*o1(nk-1,:,:)
-  hei(nk,:,:) = 1.5*he(nk,:,:)-.5*he(nk-1,:,:)
-  embari(nk,:,:) = 1.5*mbar(nk,:,:)-.5*mbar(nk-1,:,:)
-  tni(nk,:,:) = 1.5*tn(nk,:,:)-.5*tn(nk-1,:,:)
-  wi(nk,:,:) = 1.5*w(nk,:,:)-.5*w(nk-1,:,:)
-  dembardz(nk,:,:) = dembardz(nk-1,:,:)
-  dtndz(nk,:,:) = dtndz(nk-1,:,:)
   dembardz = dembardz/dz(i_ng)
   dtndz = dtndz/dz(i_ng)
+
+  do k = 1,nk-1
+    wi(k,:,:) = .5*(w(k,:,:)+w(k+1,:,:))
+  enddo
+  wi(nk,:,:) = 1.5*w(nk,:,:)-.5*w(nk-1,:,:)
 
 ! advecl
   call advec_ng(o2,o2_advec,i_ng)
@@ -133,52 +129,41 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
   endif
 
   do n = 1,3
-    diff_fac(nk,:,:,n) = (tn(nk-1,:,:)/t00)**(1.75-ss(n))
-    do k = 1,nk-1
-      diff_fac(k,:,:,n) = (tni(k-1,:,:)/t00)**(1.75-ss(n))
-    enddo
+    diff_fac(:,:,:,n) = (tni/t00)**(1.75-ss(n))
   enddo
 
-  wks4 = dembardz(0,:,:)/(embari(0,:,:)*2.)
+  wks4 = dembardz(1,:,:)/(embari(1,:,:)*2.)
 
   km = 1
   kp = 2
 
-  ep(:,:,io2,kp) = 1.-1./embari(0,:,:)*(rmass_o2+dembardz(0,:,:))
-  ep(:,:,io1,kp) = 1.-1./embari(0,:,:)*(rmass_o1+dembardz(0,:,:))
-  ep(:,:,ihe,kp) = 1.-1./embari(0,:,:)*(rmass_he+dembardz(0,:,:))- &
-    thdiffalpha*dtndz(0,:,:)/tni(0,:,:)
+  ep(:,:,io2,kp) = 1.-1./embari(1,:,:)*(rmass_o2+dembardz(1,:,:))
+  ep(:,:,io1,kp) = 1.-1./embari(1,:,:)*(rmass_o1+dembardz(1,:,:))
+  ep(:,:,ihe,kp) = 1.-1./embari(1,:,:)*(rmass_he+dembardz(1,:,:))- &
+    thdiffalpha*dtndz(1,:,:)/tni(1,:,:)
   zz(1,:,:,:) = 0.
 
-  alpha(:,:,io2,1) = -(phi(io2,4)+(phi(io2,io1)-phi(io2,4))*o1i(0,:,:)+ &
-    (diff_fac(1,:,:,io2)*phi(io2,ihe)-phi(io2,4))*hei(0,:,:))
-  alpha(:,:,io1,2) = -(phi(io1,4)+(phi(io1,io2)-phi(io1,4))*o2i(0,:,:)+ &
-    (diff_fac(1,:,:,io1)*phi(io1,ihe)-phi(io1,4))*hei(0,:,:))
+  alpha(:,:,io2,1) = -(phi(io2,4)+(phi(io2,io1)-phi(io2,4))*o1i(1,:,:)+ &
+    (diff_fac(1,:,:,io2)*phi(io2,ihe)-phi(io2,4))*hei(1,:,:))
+  alpha(:,:,io1,2) = -(phi(io1,4)+(phi(io1,io2)-phi(io1,4))*o2i(1,:,:)+ &
+    (diff_fac(1,:,:,io1)*phi(io1,ihe)-phi(io1,4))*hei(1,:,:))
   alpha(:,:,ihe,3) = -(diff_fac(1,:,:,3)*phi(ihe,4)+ &
-    (diff_fac(1,:,:,io2)*phi(ihe,io2)-diff_fac(1,:,:,3)*phi(ihe,4))*o2i(0,:,:)+ &
-    (diff_fac(1,:,:,io1)*phi(ihe,io1)-diff_fac(1,:,:,3)*phi(ihe,4))*o1i(0,:,:))
-  alpha(:,:,io2,2) = (phi(io2,io1)-phi(io2,4))*o2i(0,:,:)
-  alpha(:,:,io2,3) = (diff_fac(1,:,:,io2)*phi(io2,ihe)-phi(io2,4))*o2i(0,:,:)
-  alpha(:,:,io1,1) = (phi(io1,io2)-phi(io1,4))*o1i(0,:,:)
-  alpha(:,:,io1,3) = (diff_fac(1,:,:,io1)*phi(io1,ihe)-phi(io1,4))*o1i(0,:,:)
-  alpha(:,:,ihe,1) = (diff_fac(1,:,:,io2)*phi(ihe,io2)-diff_fac(1,:,:,3)*phi(ihe,4))*hei(0,:,:)
-  alpha(:,:,ihe,2) = (diff_fac(1,:,:,io1)*phi(ihe,io1)-diff_fac(1,:,:,3)*phi(ihe,4))*hei(0,:,:)
+    (diff_fac(1,:,:,io2)*phi(ihe,io2)-diff_fac(1,:,:,3)*phi(ihe,4))*o2i(1,:,:)+ &
+    (diff_fac(1,:,:,io1)*phi(ihe,io1)-diff_fac(1,:,:,3)*phi(ihe,4))*o1i(1,:,:))
+  alpha(:,:,io2,2) = (phi(io2,io1)-phi(io2,4))*o2i(1,:,:)
+  alpha(:,:,io2,3) = (diff_fac(1,:,:,io2)*phi(io2,ihe)-phi(io2,4))*o2i(1,:,:)
+  alpha(:,:,io1,1) = (phi(io1,io2)-phi(io1,4))*o1i(1,:,:)
+  alpha(:,:,io1,3) = (diff_fac(1,:,:,io1)*phi(io1,ihe)-phi(io1,4))*o1i(1,:,:)
+  alpha(:,:,ihe,1) = (diff_fac(1,:,:,io2)*phi(ihe,io2)-diff_fac(1,:,:,3)*phi(ihe,4))*hei(1,:,:)
+  alpha(:,:,ihe,2) = (diff_fac(1,:,:,io1)*phi(ihe,io1)-diff_fac(1,:,:,3)*phi(ihe,4))*hei(1,:,:)
 
-  detalpha = alpha(:,:,1,1)*(alpha(:,:,2,2)*alpha(:,:,3,3)-alpha(:,:,2,3)*alpha(:,:,3,2))+ &
-    alpha(:,:,1,2)*(alpha(:,:,2,3)*alpha(:,:,3,1)-alpha(:,:,2,1)*alpha(:,:,3,3))+ &
-    alpha(:,:,1,3)*(alpha(:,:,2,1)*alpha(:,:,3,2)-alpha(:,:,2,2)*alpha(:,:,3,1))
+  do lat = latd0,latd1
+    do i = lond0,lond1
+      ak(i,lat,:,:,kp) = matinv3(alpha(i,lat,:,:))
+    enddo
+  enddo
 
-  ak(:,:,1,1,kp) = alpha(:,:,2,2)*alpha(:,:,3,3)-alpha(:,:,2,3)*alpha(:,:,3,2)
-  ak(:,:,2,2,kp) = alpha(:,:,1,1)*alpha(:,:,3,3)-alpha(:,:,1,3)*alpha(:,:,3,1)
-  ak(:,:,3,3,kp) = alpha(:,:,1,1)*alpha(:,:,2,2)-alpha(:,:,1,2)*alpha(:,:,2,1)
-  ak(:,:,1,2,kp) = alpha(:,:,1,3)*alpha(:,:,3,2)-alpha(:,:,1,2)*alpha(:,:,3,3)
-  ak(:,:,1,3,kp) = alpha(:,:,1,2)*alpha(:,:,2,3)-alpha(:,:,1,3)*alpha(:,:,2,2)
-  ak(:,:,2,3,kp) = alpha(:,:,1,3)*alpha(:,:,2,1)-alpha(:,:,1,1)*alpha(:,:,2,3)
-  ak(:,:,2,1,kp) = alpha(:,:,2,3)*alpha(:,:,3,1)-alpha(:,:,2,1)*alpha(:,:,3,3)
-  ak(:,:,3,1,kp) = alpha(:,:,2,1)*alpha(:,:,3,2)-alpha(:,:,2,2)*alpha(:,:,3,1)
-  ak(:,:,3,2,kp) = alpha(:,:,3,1)*alpha(:,:,1,2)-alpha(:,:,1,1)*alpha(:,:,3,2)
-
-  wks1 = embari(0,:,:)*rmassinv_n2*(t00/tlbc)**0.25/(tau*detalpha)
+  wks1 = embari(1,:,:)*rmassinv_n2*(t00/tlbc)**0.25/tau
 
   do m = 1,3
     do isp = io2,ihe
@@ -194,47 +179,35 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
     km = kp
     kp = ktmp
 
-    ep(:,:,io2,kp) = 1.-1./embari(k,:,:)*(rmass_o2+dembardz(k,:,:))
-    ep(:,:,io1,kp) = 1.-1./embari(k,:,:)*(rmass_o1+dembardz(k,:,:))
-    ep(:,:,ihe,kp) = 1.-1./embari(k,:,:)*(rmass_he+dembardz(k,:,:))
-    if (k /= nk-1) ep(:,:,ihe,kp) = ep(:,:,ihe,kp)-thdiffalpha*dtndz(k,:,:)/tni(k,:,:)
+    ep(:,:,io2,kp) = 1.-1./embari(k+1,:,:)*(rmass_o2+dembardz(k+1,:,:))
+    ep(:,:,io1,kp) = 1.-1./embari(k+1,:,:)*(rmass_o1+dembardz(k+1,:,:))
+    ep(:,:,ihe,kp) = 1.-1./embari(k+1,:,:)*(rmass_he+dembardz(k+1,:,:))
+    if (k /= nk-1) ep(:,:,ihe,kp) = ep(:,:,ihe,kp)-thdiffalpha*dtndz(k+1,:,:)/tni(k+1,:,:)
 
-    alpha(:,:,io2,1) = -(phi(io2,4)+(phi(io2,io1)-phi(io2,4))*o1i(k,:,:)+ &
-      (diff_fac(k+1,:,:,io2)*phi(io2,ihe)-phi(io2,4))*hei(k,:,:))
-    alpha(:,:,io1,2) = -(phi(io1,4)+(phi(io1,io2)-phi(io1,4))*o2i(k,:,:)+ &
-      (diff_fac(k+1,:,:,io1)*phi(io1,ihe)-phi(io1,4))*hei(k,:,:))
+    alpha(:,:,io2,1) = -(phi(io2,4)+(phi(io2,io1)-phi(io2,4))*o1i(k+1,:,:)+ &
+      (diff_fac(k+1,:,:,io2)*phi(io2,ihe)-phi(io2,4))*hei(k+1,:,:))
+    alpha(:,:,io1,2) = -(phi(io1,4)+(phi(io1,io2)-phi(io1,4))*o2i(k+1,:,:)+ &
+      (diff_fac(k+1,:,:,io1)*phi(io1,ihe)-phi(io1,4))*hei(k+1,:,:))
     alpha(:,:,ihe,3) = -(diff_fac(k+1,:,:,3)*phi(ihe,4)+ &
-      (diff_fac(k+1,:,:,io2)*phi(ihe,io2)-diff_fac(k+1,:,:,3)*phi(ihe,4))*o2i(k,:,:)+ &
-      (diff_fac(k+1,:,:,io1)*phi(ihe,io1)-diff_fac(k+1,:,:,3)*phi(ihe,4))*o1i(k,:,:))
-    alpha(:,:,io2,2) = (phi(io2,io1)-phi(io2,4))*o2i(k,:,:)
-    alpha(:,:,io2,3) = (diff_fac(k+1,:,:,io2)*phi(io2,ihe)-phi(io2,4))*o2i(k,:,:)
-    alpha(:,:,io1,1) = (phi(io1,io2)-phi(io1,4))*o1i(k,:,:)
-    alpha(:,:,io1,3) = (diff_fac(k+1,:,:,io1)*phi(io1,ihe)-phi(io1,4))*o1i(k,:,:)
-    alpha(:,:,ihe,1) = (diff_fac(k+1,:,:,io2)*phi(ihe,io2)-diff_fac(k+1,:,:,3)*phi(ihe,4))*hei(k,:,:)
-    alpha(:,:,ihe,2) = (diff_fac(k+1,:,:,io1)*phi(ihe,io1)-diff_fac(k+1,:,:,3)*phi(ihe,4))*hei(k,:,:)
+      (diff_fac(k+1,:,:,io2)*phi(ihe,io2)-diff_fac(k+1,:,:,3)*phi(ihe,4))*o2i(k+1,:,:)+ &
+      (diff_fac(k+1,:,:,io1)*phi(ihe,io1)-diff_fac(k+1,:,:,3)*phi(ihe,4))*o1i(k+1,:,:))
+    alpha(:,:,io2,2) = (phi(io2,io1)-phi(io2,4))*o2i(k+1,:,:)
+    alpha(:,:,io2,3) = (diff_fac(k+1,:,:,io2)*phi(io2,ihe)-phi(io2,4))*o2i(k+1,:,:)
+    alpha(:,:,io1,1) = (phi(io1,io2)-phi(io1,4))*o1i(k+1,:,:)
+    alpha(:,:,io1,3) = (diff_fac(k+1,:,:,io1)*phi(io1,ihe)-phi(io1,4))*o1i(k+1,:,:)
+    alpha(:,:,ihe,1) = (diff_fac(k+1,:,:,io2)*phi(ihe,io2)-diff_fac(k+1,:,:,3)*phi(ihe,4))*hei(k+1,:,:)
+    alpha(:,:,ihe,2) = (diff_fac(k+1,:,:,io1)*phi(ihe,io1)-diff_fac(k+1,:,:,3)*phi(ihe,4))*hei(k+1,:,:)
 
-    detalpha = alpha(:,:,1,1)*(alpha(:,:,2,2)*alpha(:,:,3,3)-alpha(:,:,2,3)*alpha(:,:,3,2))+ &
-      alpha(:,:,1,2)*(alpha(:,:,2,3)*alpha(:,:,3,1)-alpha(:,:,2,1)*alpha(:,:,3,3))+ &
-      alpha(:,:,1,3)*(alpha(:,:,2,1)*alpha(:,:,3,2)-alpha(:,:,2,2)*alpha(:,:,3,1))
+    do lat = latd0,latd1
+      do i = lond0,lond1
+        ak(i,lat,:,:,kp) = matinv3(alpha(i,lat,:,:))
+      enddo
+    enddo
 
-    ak(:,:,1,1,kp) = alpha(:,:,2,2)*alpha(:,:,3,3)-alpha(:,:,2,3)*alpha(:,:,3,2)
-    ak(:,:,2,2,kp) = alpha(:,:,1,1)*alpha(:,:,3,3)-alpha(:,:,1,3)*alpha(:,:,3,1)
-    ak(:,:,3,3,kp) = alpha(:,:,1,1)*alpha(:,:,2,2)-alpha(:,:,1,2)*alpha(:,:,2,1)
-    ak(:,:,1,2,kp) = alpha(:,:,1,3)*alpha(:,:,3,2)-alpha(:,:,1,2)*alpha(:,:,3,3)
-    ak(:,:,1,3,kp) = alpha(:,:,1,2)*alpha(:,:,2,3)-alpha(:,:,1,3)*alpha(:,:,2,2)
-    ak(:,:,2,3,kp) = alpha(:,:,1,3)*alpha(:,:,2,1)-alpha(:,:,1,1)*alpha(:,:,2,3)
-    ak(:,:,2,1,kp) = alpha(:,:,2,3)*alpha(:,:,3,1)-alpha(:,:,2,1)*alpha(:,:,3,3)
-    ak(:,:,3,1,kp) = alpha(:,:,2,1)*alpha(:,:,3,2)-alpha(:,:,2,2)*alpha(:,:,3,1)
-    ak(:,:,3,2,kp) = alpha(:,:,3,1)*alpha(:,:,1,2)-alpha(:,:,1,1)*alpha(:,:,3,2)
-
-    if (k == nk-1) then
-      wks1 = embari(nk-1,:,:)*rmassinv_n2*(t00/tn(nk-1,:,:))**0.25/(tau*detalpha)
-    else
-      wks1 = embari(k,:,:)*rmassinv_n2*(t00/tni(k,:,:))**0.25/(tau*detalpha)
-    endif
+    wks1 = embari(k+1,:,:)*rmassinv_n2*(t00/tni(k+1,:,:))**0.25/tau
 
     wks3 = wks4
-    wks4 = dembardz(k,:,:)/(embari(k,:,:)*2.)
+    wks4 = dembardz(k+1,:,:)/(embari(k+1,:,:)*2.)
 
     eddyp(k,:,:) = expzmid_inv(i_ng)*difk(i_ng,k,iday)*(1./dz(i_ng)-wks3)
     eddyq(k,:,:) = &
@@ -244,7 +217,7 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
 
     do m = 1,3
       do isp = io2,ihe
-        ak(:,:,isp,m,kp) = -ak(:,:,isp,m,kp)*wks1
+        ak(:,:,isp,m,kp) = ak(:,:,isp,m,kp)*wks1
       enddo
     enddo
 
@@ -296,14 +269,14 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
           qk(:,:,isp,m) = qk(:,:,isp,m)+(1.+.5*ep(:,:,m,kp)*dz(i_ng))/(1.-.5*ep(:,:,m,kp)*dz(i_ng))*rk(:,:,isp,m)
         enddo
       enddo
-      alpha22 = -(phi(io1,4)+(phi(io1,io2)-phi(io1,4))*o2i(nk-1,:,:)+ &
-        (diff_fac(nk,:,:,io1)*phi(io1,ihe)-phi(io1,4))*hei(nk-1,:,:))
-      alpha33 = -(diff_fac(nk,:,:,3)*phi(ihe,4)+ &
-        (diff_fac(nk,:,:,io2)*phi(ihe,io2)-diff_fac(nk,:,:,3)*phi(ihe,4))*o2i(nk-1,:,:)+ &
-        (diff_fac(nk,:,:,io1)*phi(ihe,io1)-diff_fac(nk,:,:,3)*phi(ihe,4))*o1i(nk-1,:,:))
-      alpha23 = (diff_fac(nk,:,:,io1)*phi(io1,ihe)-phi(io1,4))*o1i(nk-1,:,:)
-      alpha32 = (diff_fac(nk,:,:,io1)*phi(ihe,io1)-diff_fac(nk,:,:,3)*phi(ihe,4))*hei(nk-1,:,:)
-      flx00 = embari(nk-1,:,:)*rmassinv_n2*p0*(t00/tn(nk-1,:,:))**0.25/(tau*grav)
+      alpha22 = -(phi(io1,4)+(phi(io1,io2)-phi(io1,4))*o2i(k+1,:,:)+ &
+        (diff_fac(k+1,:,:,io1)*phi(io1,ihe)-phi(io1,4))*hei(k+1,:,:))
+      alpha33 = -(diff_fac(k+1,:,:,3)*phi(ihe,4)+ &
+        (diff_fac(k+1,:,:,io2)*phi(ihe,io2)-diff_fac(k+1,:,:,3)*phi(ihe,4))*o2i(k+1,:,:)+ &
+        (diff_fac(k+1,:,:,io1)*phi(ihe,io1)-diff_fac(k+1,:,:,3)*phi(ihe,4))*o1i(k+1,:,:))
+      alpha23 = (diff_fac(k+1,:,:,io1)*phi(io1,ihe)-phi(io1,4))*o1i(k+1,:,:)
+      alpha32 = (diff_fac(k+1,:,:,io1)*phi(ihe,io1)-diff_fac(k+1,:,:,3)*phi(ihe,4))*hei(k+1,:,:)
+      flx00 = embari(k,:,:)*rmassinv_n2*p0*(t00/tn(k,:,:))**0.25/(tau*grav)
       do isp = io2,ihe
         fk(:,:,isp) = fk(:,:,isp)- &
           rk(:,:,isp,2)*(alpha23-alpha22)*flx_he/(flx00*(1./dz(i_ng)-0.5*ep(:,:,2,kp)))- &
@@ -320,21 +293,9 @@ subroutine comp_ng(o2_upd,o2nm_upd,o1_upd,o1nm_upd,he_upd,henm_upd,flx_he,istep,
       enddo
     enddo
 
-    wks1 = qk(:,:,1,1)*(qk(:,:,2,2)*qk(:,:,3,3)-qk(:,:,2,3)*qk(:,:,3,2))+ &
-      qk(:,:,1,2)*(qk(:,:,2,3)*qk(:,:,3,1)-qk(:,:,2,1)*qk(:,:,3,3))+ &
-      qk(:,:,1,3)*(qk(:,:,2,1)*qk(:,:,3,2)-qk(:,:,2,2)*qk(:,:,3,1))
-    wkm1(:,:,io2,1) = qk(:,:,2,2)*qk(:,:,3,3)-qk(:,:,2,3)*qk(:,:,3,2)
-    wkm1(:,:,io2,2) = qk(:,:,1,3)*qk(:,:,3,2)-qk(:,:,1,2)*qk(:,:,3,3)
-    wkm1(:,:,io2,3) = qk(:,:,1,2)*qk(:,:,2,3)-qk(:,:,1,3)*qk(:,:,2,2)
-    wkm1(:,:,io1,1) = qk(:,:,2,3)*qk(:,:,3,1)-qk(:,:,2,1)*qk(:,:,3,3)
-    wkm1(:,:,io1,2) = qk(:,:,1,1)*qk(:,:,3,3)-qk(:,:,1,3)*qk(:,:,3,1)
-    wkm1(:,:,io1,3) = qk(:,:,1,3)*qk(:,:,2,1)-qk(:,:,1,1)*qk(:,:,2,3)
-    wkm1(:,:,ihe,1) = qk(:,:,2,1)*qk(:,:,3,2)-qk(:,:,2,2)*qk(:,:,3,1)
-    wkm1(:,:,ihe,2) = qk(:,:,1,2)*qk(:,:,3,1)-qk(:,:,1,1)*qk(:,:,3,2)
-    wkm1(:,:,ihe,3) = qk(:,:,1,1)*qk(:,:,2,2)-qk(:,:,1,2)*qk(:,:,2,1)
-    do m = 1,3
-      do isp = io2,ihe
-        wkm1(:,:,isp,m) = wkm1(:,:,isp,m)/wks1
+    do lat = latd0,latd1
+      do i = lond0,lond1
+        wkm1(i,lat,:,:) = matinv3(qk(i,lat,:,:))
       enddo
     enddo
 
