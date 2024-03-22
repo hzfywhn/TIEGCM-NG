@@ -1,8 +1,9 @@
 subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
 
   use params_module,only: nlevp1_ng
-  use cons_module,only: rmass_o2,rmass_o1,rmass_he,rmass_no, &
-    rmassinv_o2,rmassinv_o1,rmassinv_he,rmassinv_n2,rmassinv_no,avo,rtd
+  use cons_module,only: avo,rtd, &
+    rmass_o2,rmass_o1,rmass_he,rmass_n2,rmass_no,rmass_n4s, &
+    rmassinv_o2,rmassinv_o1,rmassinv_he,rmassinv_n2,rmassinv_no,rmassinv_n4s
   use input_module,only: colfac
   use fields_ng_module,only: flds,itp,dipmin
   use output_ng_module,only: addfld
@@ -13,18 +14,20 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
     lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2
 
   real,parameter :: qe = 1.602e-19, qeomeo10 = 1.7588028E7, qeoNao10 = 9.6489E3, &
-    rnu_op_o2 = 6.64E-10, rnu_nop_o2 = 4.27E-10, rnu_o2p_o = 2.31E-10, rnu_nop_o = 2.44E-10, &
-    rnu_o2p_he = 0.70E-10, rnu_op_he = 1.32E-10, rnu_nop_he = 0.74E-10, &
-    rnu_o2p_n2 = 4.13E-10, rnu_op_n2 = 6.82E-10, rnu_nop_n2 = 4.34E-10, &
+    rnu_op_o2 = 6.64E-10, rnu_np_o2 = 7.25E-10, rnu_n2p_o2 = 4.49E-10, rnu_nop_o2 = 4.27E-10, &
+    rnu_o2p_o = 2.31E-10, rnu_np_o = 4.42E-10, rnu_n2p_o = 2.58E-10, rnu_nop_o = 2.44E-10, &
+    rnu_o2p_he = 0.70E-10, rnu_op_he = 1.32E-10, rnu_np_he = 1.49E-10, rnu_n2p_he = 0.79E-10, rnu_nop_he = 0.74E-10, &
+    rnu_o2p_n2 = 4.13E-10, rnu_op_n2 = 6.82E-10, rnu_np_n2 = 7.47E-10, rnu_nop_n2 = 4.34E-10, &
     Me = 9.109E-31, Mp = 1.6726E-27, Kb = 1.38E-23
   integer :: nk,k
   real,dimension(flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    bmod2,sn2dec,csdec,sndec,dipmag,qe_fac,sindip,cosdip,cos2dip,sin2dip,cos2dec, &
-    omega_o2p,omega_op,omega_nop,omega_o2p_inv,omega_op_inv,omega_nop_inv,omega_e,omega_e_inv,dip,rlatm
+    bmod2,sn2dec,csdec,sndec,dipmag,qe_fac,sindip,cosdip,cos2dip,sin2dip,cos2dec,dip,rlatm, &
+    omega_o2p,omega_op,omega_np,omega_n2p,omega_nop,omega_e, &
+    omega_o2p_inv,omega_op_inv,omega_np_inv,omega_n2p_inv,omega_nop_inv,omega_e_inv
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
-    tn,xnmbar,o2,o1,he,n2,ti,te,o2p,op,nop,tnti,o2_cm3,o1_cm3,he_cm3,n2_cm3,sigma_ped,sigma_hall, &
+    tn,xnmbar,o2,o1,he,n2,ti,te,o2p,op,nplus,n2p,nop,tnti,o2_cm3,o1_cm3,he_cm3,n2_cm3,sigma_ped,sigma_hall, &
     ne,lamda2,lamda1tmp,lamda2tmp,lxxnorot,lyynorot,lxynorot,lyxnorot, &
-    rnu_o2p_o2,rnu_op_o,rnu_o2p,rnu_op,rnu_nop,rnu_ne,sqrt_te,Etot,Ki,Mi,E1,Q1
+    rnu_o2p_o2,rnu_op_o,rnu_n2p_n2,rnu_o2p,rnu_op,rnu_np,rnu_n2p,rnu_nop,rnu_ne,sqrt_te,Etot,Ki,Mi,E1,Q1
 
   tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
   xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
@@ -36,6 +39,8 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
   te = flds(i_ng)%te(:,:,:,itp(i_ng))
   o2p = flds(i_ng)%o2p(:,:,:,itp(i_ng))
   op = flds(i_ng)%op(:,:,:,itp(i_ng))
+  nplus = flds(i_ng)%nplus
+  n2p = flds(i_ng)%n2p
   nop = flds(i_ng)%nop
   Etot = flds(i_ng)%Etot
 
@@ -51,9 +56,13 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
   qe_fac = qe*1.e10/bmod2
   omega_op = qeoNao10*bmod2*rmassinv_o1
   omega_o2p = qeoNao10*bmod2*rmassinv_o2
+  omega_np = qeoNao10*bmod2*rmassinv_n4s
+  omega_n2p = qeoNao10*bmod2*rmassinv_n2
   omega_nop = qeoNao10*bmod2*rmassinv_no
   omega_op_inv = 1./omega_op
   omega_o2p_inv = 1./omega_o2p
+  omega_np_inv = 1./omega_np
+  omega_n2p_inv = 1./omega_n2p
   omega_nop_inv = 1./omega_nop
   omega_e = qeomeo10*bmod2
   omega_e_inv = 1./omega_e
@@ -68,6 +77,7 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
   tnti = 0.5*(ti+tn)
   rnu_o2p_o2 = 2.59E-11*sqrt(tnti)*(1.-0.073*log10(tnti))**2
   rnu_op_o = 3.67e-11*sqrt(tnti)*(1.-0.064*log10(tnti))**2*colfac
+  rnu_n2p_n2 = 5.14E-11*sqrt(tnti)*(1.-0.069*log10(tnti))**2
 
   o2_cm3 = o2*xnmbar*rmassinv_o2
   o1_cm3 = o1*xnmbar*rmassinv_o1
@@ -76,6 +86,8 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
 
   rnu_o2p = rnu_o2p_o2*o2_cm3+rnu_o2p_o*o1_cm3+rnu_o2p_he*he_cm3+rnu_o2p_n2*n2_cm3
   rnu_op = rnu_op_o2*o2_cm3+rnu_op_o*o1_cm3+rnu_op_he*he_cm3+rnu_op_n2*n2_cm3
+  rnu_np = rnu_np_o2*o2_cm3+rnu_np_o*o1_cm3+rnu_np_he*he_cm3+rnu_np_n2*n2_cm3
+  rnu_n2p = rnu_n2p_o2*o2_cm3+rnu_n2p_o*o1_cm3+rnu_n2p_he*he_cm3+rnu_n2p_n2*n2_cm3
   rnu_nop = rnu_nop_o2*o2_cm3+rnu_nop_o*o1_cm3+rnu_nop_he*he_cm3+rnu_nop_n2*n2_cm3
   sqrt_te = sqrt(te)
   rnu_ne = 1.82e-10*o2_cm3*sqrt_te*(1.+3.60e-2*sqrt_te)+ &
@@ -85,15 +97,27 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
   do k = 1,nk
     rnu_o2p(k,:,:) = rnu_o2p(k,:,:)*omega_o2p_inv
     rnu_op(k,:,:) = rnu_op(k,:,:)*omega_op_inv
+    rnu_np(k,:,:) = rnu_np(k,:,:)*omega_np_inv
+    rnu_n2p(k,:,:) = rnu_n2p(k,:,:)*omega_n2p_inv
     rnu_nop(k,:,:) = rnu_nop(k,:,:)*omega_nop_inv
     rnu_ne(k,:,:) = rnu_ne(k,:,:)*omega_e_inv
   enddo
   rnu_ne = rnu_ne*4.
 
-  ne = op+o2p+nop
+  ne = op+o2p+nplus+n2p+nop
 
-  sigma_ped = op*rnu_op/(1.+rnu_op**2)+o2p*rnu_o2p/(1.+rnu_o2p**2)+nop*rnu_nop/(1.+rnu_nop**2)+ne*rnu_ne/(1.+rnu_ne**2)
-  sigma_hall = ne/(1.+rnu_ne**2)-op/(1.+rnu_op**2)-o2p/(1.+rnu_o2p**2)-nop/(1.+rnu_nop**2)
+  sigma_ped = op*rnu_op/(1.+rnu_op**2)+ &
+    o2p*rnu_o2p/(1.+rnu_o2p**2)+ &
+    nplus*rnu_np/(1.+rnu_np**2)+ &
+    n2p*rnu_n2p/(1.+rnu_n2p**2)+ &
+    nop*rnu_nop/(1.+rnu_nop**2)+ &
+    ne*rnu_ne/(1.+rnu_ne**2)
+  sigma_hall = ne/(1.+rnu_ne**2)- &
+    op/(1.+rnu_op**2)- &
+    o2p/(1.+rnu_o2p**2)- &
+    nplus/(1.+rnu_np**2)- &
+    n2p/(1.+rnu_n2p**2)- &
+    nop/(1.+rnu_nop**2)
   do k = 1,nk
     sigma_ped(k,:,:) = sigma_ped(k,:,:)*qe_fac
     sigma_hall(k,:,:) = sigma_hall(k,:,:)*qe_fac
@@ -139,8 +163,8 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
   call addfld(ped_out,'SIGMA_PED',i_ng)
   call addfld(hall_out,'SIGMA_HAL',i_ng)
 
-  Ki = 1/ne*(op/rnu_op+o2p/rnu_o2p+nop/rnu_nop)
-  Mi = 1/ne*(op*rmass_o1+o2p*rmass_o2+nop*rmass_no)
+  Ki = 1/ne*(op/rnu_op+o2p/rnu_o2p+nplus/rnu_np+n2p/rnu_n2p+nop/rnu_nop)
+  Mi = 1/ne*(op*rmass_o1+o2p*rmass_o2+nplus*rmass_n4s+n2p*rmass_n2+nop*rmass_no)
 
   E1 = (1.0+rnu_ne/Ki)*sqrt(Kb*(1.0+Ki**2)/(1.0-Ki**2)*(te+ti)/(Mi*Mp))
   do k = 1,nk

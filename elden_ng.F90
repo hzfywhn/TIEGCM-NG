@@ -55,7 +55,7 @@ subroutine elden_ng(nplus,n2p,nop,o2p,electrons,i_ng)
   qn2pi(nk,:,:) = 1.5*qn2p(nk,:,:)-.5*qn2p(nk-1,:,:)
 
   o2_cm3 = o2*rmassinv_o2*xnmbar
-  o1_cm3 = max(o1*rmassinv_o1*xnmbar,1e4)
+  o1_cm3 = max(o1*rmassinv_o1*xnmbar,1e6)
   nplus = (qnpi+rk10*op*n2d*xnmbar*rmassinv_n2d)/((rk6+rk7)*o2_cm3+rk8*o1_cm3)
 
   a = qnopi+xnmbar*(rk2*op_upd*n2*rmassinv_n2+rk7*nplus*o2*rmassinv_o2+beta9i*no*rmassinv_no)

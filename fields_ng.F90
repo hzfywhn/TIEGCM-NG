@@ -79,29 +79,29 @@ module fields_ng_module
 ! fmap defines the fields to be mapped out
   character(len=*),dimension(*),parameter :: fmap = &
     (/'TN    ','UN    ','VN    ','O2    ','O1    ','HE    ', &
-      'OP    ','N4S   ','NO    ','AR    ','TI    ','TE    ', &
-      'NE    ','OMEGA ','N2D   ','O2P   ','Z     ','TN_NM ', &
+      'OP    ','N2D   ','N4S   ','NO    ','AR    ','TI    ', &
+      'TE    ','NE    ','OMEGA ','O2P   ','Z     ','TN_NM ', &
       'UN_NM ','VN_NM ','O2_NM ','O1_NM ','HE_NM ','OP_NM ', &
-      'N4S_NM','NO_NM ','AR_NM '/)
+      'N2D_NM','N4S_NM','NO_NM ','AR_NM '/)
 
 ! bndry defines the fields to be mapped in (lateral boundaries)
   character(len=*),dimension(*),parameter :: bndry = &
     (/'TN   ','UN   ','VN   ','O2   ','O1   ','HE   ', &
-      'OP   ','N4S  ','NO   ','AR   ','OMEGA'/)
+      'OP   ','N2D  ','N4S  ','NO   ','AR   ','OMEGA'/)
 
   integer,parameter :: nmap = size(fmap), nbnd = size(bndry)
 
 ! ubfill indicates the following fields have filling values at the uppermost level
   character(len=*),dimension(*),parameter :: ubfill = &
     (/'TN   ','UN   ','VN   ','OP   ','TI   ','TE   ', &
-      'N2D  ','O2P  ','TN_NM','UN_NM','VN_NM','OP_NM'/)
+      'O2P  ','TN_NM','UN_NM','VN_NM','OP_NM'/)
 
 ! zlog indicates the following fields should be log-interpolated in z axis
   character(len=*),dimension(*),parameter :: zlog = &
-    (/'TN    ','O2    ','O1    ','HE    ','OP    ','N4S   ', &
-      'NO    ','AR    ','TI    ','TE    ','NE    ','N2D   ', &
+    (/'TN    ','O2    ','O1    ','HE    ','OP    ','N2D   ', &
+      'N4S   ','NO    ','AR    ','TI    ','TE    ','NE    ', &
       'O2P   ','Z     ','TN_NM ','O2_NM ','O1_NM ','HE_NM ', &
-      'OP_NM ','N4S_NM','NO_NM ','AR_NM '/)
+      'OP_NM ','N2D_NM','N4S_NM','NO_NM ','AR_NM '/)
 
   contains
 !-----------------------------------------------------------------------
