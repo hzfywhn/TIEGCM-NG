@@ -52,7 +52,7 @@ module fields_ng_module
       xiop2p, xiop2d, nplus,  n2p,    nop,    lxx,    lyy,    lxy,    lyx,    &
       qji_ti, qji_tn, cool_implicit,  cool_explicit,  hdt,    hdu,    hdv,    &
       hdo2,   hdo1,   hdhe,   ped,    hall,   lam1,   zg,     n2,     wn,     &
-      Fe,     Fn,     Etot,   Qa,     Q2,     fnrh,   fkmh,   &
+      Fe,     Fn,     Etot,   Q1,     Q2,     fnrh,   fkmh,   &
       rk1,    rk2,    rk3,    ra1,    ra2,    ra3,    beta1,  beta3,  beta5,  &
       beta8,  beta9,  beta9n, beta17, rk19,   rk20,   rk25,   rkm12,  rj,     &
       qtef,   qtotal, qop2p,  qop2d,  qo2p,   qop,    qn2p,   qnp,    qnop
@@ -365,7 +365,7 @@ module fields_ng_module
       allocate(flds(i_ng)%Fe(nk,lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%Fn(nk,lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%Etot(nk,lond0:lond1,latd0:latd1))
-      allocate(flds(i_ng)%Qa(nk,lond0:lond1,latd0:latd1))
+      allocate(flds(i_ng)%Q1(nk,lond0:lond1,latd0:latd1))
       allocate(flds(i_ng)%Q2(nk,lond0:lond1,latd0:latd1))
 
       allocate(flds(i_ng)%fnrh(nk,lond0:lond1,latd0:latd1))

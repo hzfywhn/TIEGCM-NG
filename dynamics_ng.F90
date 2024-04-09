@@ -140,7 +140,7 @@ subroutine dynamics_ng(istep,i_ng)
     flds(i_ng)%lam1, &
     flds(i_ng)%ped, &
     flds(i_ng)%hall, &
-    flds(i_ng)%Qa, &
+    flds(i_ng)%Q1, &
     flds(i_ng)%Q2, &
     i_ng)
 

@@ -178,7 +178,7 @@ subroutine aurora_ng(qteaur,qo2p,qop,qn2p,qnp,qtef,ui,vi,i_ng)
       do i = lond0,lond1
         do lat = latbeg,latend
           if (smlat(i,lat)>0. .and. smlat(i,lat)<10.) then
-            call subaur_drift(smlat(i,lat),smlt(i,lat),skp,vns,ves,vvs)
+            call subaur_drift(smlt(i,lat),smlat(i,lat),skp,vns,ves,vvs)
             if (ihem == 1) then
               sui(i,lat) = -ves*csdec(i,lat) - vns*sndec(i,lat)
               svi(i,lat) = ves*sndec(i,lat) - vns*csdec(i,lat)

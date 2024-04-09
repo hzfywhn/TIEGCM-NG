@@ -1,4 +1,4 @@
-subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
+subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Q1,Q2,i_ng)
 
   use params_module,only: nlevp1_ng
   use cons_module,only: avo,rtd, &
@@ -11,7 +11,7 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
 
   integer,intent(in) :: i_ng
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1),intent(out) :: &
-    lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2
+    lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Q1,Q2
 
   real,parameter :: qe = 1.602e-19, qeomeo10 = 1.7588028E7, qeoNao10 = 9.6489E3, &
     rnu_op_o2 = 6.64E-10, rnu_np_o2 = 7.25E-10, rnu_n2p_o2 = 4.49E-10, rnu_nop_o2 = 4.27E-10, &
@@ -27,7 +27,7 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
   real,dimension(nlevp1_ng(i_ng),flds(i_ng)%lond0:flds(i_ng)%lond1,flds(i_ng)%latd0:flds(i_ng)%latd1) :: &
     tn,xnmbar,o2,o1,he,n2,ti,te,o2p,op,nplus,n2p,nop,tnti,o2_cm3,o1_cm3,he_cm3,n2_cm3,sigma_ped,sigma_hall, &
     ne,lamda2,lamda1tmp,lamda2tmp,lxxnorot,lyynorot,lxynorot,lyxnorot, &
-    rnu_o2p_o2,rnu_op_o,rnu_n2p_n2,rnu_o2p,rnu_op,rnu_np,rnu_n2p,rnu_nop,rnu_ne,sqrt_te,Etot,Ki,Mi,E1,Q1
+    rnu_o2p_o2,rnu_op_o,rnu_n2p_n2,rnu_o2p,rnu_op,rnu_np,rnu_n2p,rnu_nop,rnu_ne,sqrt_te,Etot,Ki,Mi,E1
 
   tn = flds(i_ng)%tn(:,:,:,itp(i_ng))
   xnmbar = flds(i_ng)%xnmbar(:,:,:,itp(i_ng))
@@ -171,22 +171,21 @@ subroutine lamdas_ng(lxx,lyy,lxy,lyx,lamda1,ped_out,hall_out,Qa,Q2,i_ng)
     E1(k,:,:) = E1(k,:,:)*bmod2*1E-4
   enddo
 
-  Q1 = Me*rnu_ne*ne*1E6*Etot**2
-  Q2 = Mi*Mp*1E6*Ki**2*(Etot-E1)**2/(1.0+Ki**2)*(Etot/E1*(1.0+rnu_ne/Ki)-1.0)
+  Q1 = 0.0
+  Q2 = 0.0
   do k = 1,nk
-    Q1(k,:,:) = Q1(k,:,:)/(omega_e_inv*(bmod2*1E-4)**2)
-    Q2(k,:,:) = Q2(k,:,:)/(bmod2*1E-4)**2* &
-      (op(k,:,:)*rnu_op(k,:,:)/omega_op_inv+ &
-      o2p(k,:,:)*rnu_o2p(k,:,:)/omega_o2p_inv+ &
-      nop(k,:,:)*rnu_nop(k,:,:)/omega_nop_inv)
-  enddo
-  Qa = Q1+Q2
-
-  do k = 1,nk
-    where (abs(rlatm)*rtd<50.0 .or. Ki(k,:,:)>1.0 .or. Etot(k,:,:)<=E1(k,:,:))
-      Q1(k,:,:) = 0.0
-      Q2(k,:,:) = 0.0
-      Qa(k,:,:) = 0.0
+    where (abs(rlatm)*rtd>50.0 .and. Ki(k,:,:)<1.0 .and. Etot(k,:,:)>E1(k,:,:))
+      Q1(k,:,:) = Me*ne(k,:,:)*1E6*Etot(k,:,:)**2/ &
+        (bmod2*1E-4)**2*rnu_ne(k,:,:)/omega_e_inv
+      Q2(k,:,:) = Mi(k,:,:)*Mp*1E6* &
+        Ki(k,:,:)**2*(Etot(k,:,:)-E1(k,:,:))**2/(1.0+Ki(k,:,:)**2)* &
+        (Etot(k,:,:)/E1(k,:,:)*(1.0+rnu_ne(k,:,:)/Ki(k,:,:))-1.0)/ &
+        (bmod2*1E-4)**2* &
+        (op(k,:,:)*rnu_op(k,:,:)/omega_op_inv+ &
+        o2p(k,:,:)*rnu_o2p(k,:,:)/omega_o2p_inv+ &
+        nplus(k,:,:)*rnu_np(k,:,:)/omega_np_inv+ &
+        n2p(k,:,:)*rnu_n2p(k,:,:)/omega_n2p_inv+ &
+        nop(k,:,:)*rnu_nop(k,:,:)/omega_nop_inv)
     endwhere
   enddo
 
